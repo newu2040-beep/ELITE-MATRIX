@@ -76,6 +76,8 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
             <video
               src={targetEnhancedUrl}
               playsInline
+              preload="auto"
+              crossOrigin="anonymous"
               autoPlay
               loop
               muted
@@ -98,6 +100,8 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
             <video
               src={sourceUrl}
               playsInline
+              preload="auto"
+              crossOrigin="anonymous"
               autoPlay
               loop
               muted

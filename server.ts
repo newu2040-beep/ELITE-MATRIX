@@ -16,6 +16,19 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Global CORS & Cross-Origin Resource Policy middleware for media streaming and API requests
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range, Authorization');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
 // Storage directories setup
 const STORAGE_DIR = path.join(__dirname, 'storage');
 const UPLOADS_DIR = path.join(STORAGE_DIR, 'uploads');
@@ -436,6 +449,16 @@ async function executeEnhancementJob(jobId: string) {
       filterChain.push('colorbalance=gs=0.16:gh=0.1:rs=-0.06');
     } else if (lut === 'rose_quartz') {
       filterChain.push('colorbalance=rh=0.14:bh=0.06:rs=0.08');
+    } else if (lut === 'tokyo_drift') {
+      filterChain.push('colorbalance=rs=0.12:bs=0.22:rh=0.18,eq=contrast=1.2:saturation=1.35');
+    } else if (lut === 'vintage_polaroid') {
+      filterChain.push('colorbalance=rs=0.15:gs=0.05:bh=-0.1,eq=contrast=0.92:brightness=0.04');
+    } else if (lut === 'monochrome_silver') {
+      filterChain.push('hue=s=0,eq=contrast=1.35');
+    } else if (lut === 'matrix_code') {
+      filterChain.push('colorbalance=gs=0.25:gh=0.12:rs=-0.15,eq=contrast=1.18');
+    } else if (lut === 'cinestill_800t') {
+      filterChain.push('colorbalance=bs=0.16:rh=0.12,eq=contrast=1.15:saturation=1.15');
     } else if (lut === 'custom' && job.settings.customLutPath && fs.existsSync(job.settings.customLutPath)) {
       filterChain.push(`lut3d=file='${job.settings.customLutPath}'`);
     }
@@ -516,7 +539,11 @@ async function executeEnhancementJob(jobId: string) {
       ffmpegArgs.push('-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p');
     } else {
       // Default: H.264
-      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart');
+      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p');
+    }
+
+    if (ext === 'mp4' || ext === 'mov') {
+      ffmpegArgs.push('-movflags', '+faststart');
     }
 
     // Bitrate & Master Quality
@@ -1031,8 +1058,22 @@ app.get('/api/download/:exportId', (req: Request, res: Response) => {
   res.download(filePath, filename);
 });
 
-// Streaming media endpoint with HTTP 206 Partial Content support for smooth mobile video playback
-app.get('/api/media/:folder/:filename', (req: Request, res: Response) => {
+// Direct static storage fallback route with full range & CORS headers
+app.use('/storage', express.static(STORAGE_DIR, {
+  acceptRanges: true,
+  setHeaders: (res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+}));
+
+// Streaming media endpoint supporting GET, HEAD, and OPTIONS with HTTP 206 Partial Content
+app.all('/api/media/:folder/:filename', (req: Request, res: Response) => {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   const { folder, filename } = req.params;
   const allowedFolders = ['uploads', 'exports', 'thumbnails', 'samples', 'luts'];
 
@@ -1049,38 +1090,77 @@ app.get('/api/media/:folder/:filename', (req: Request, res: Response) => {
 
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
-  const range = req.headers.range;
-
   const ext = path.extname(filePath).toLowerCase();
+
   let contentType = 'video/mp4';
   if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
   else if (ext === '.png') contentType = 'image/png';
   else if (ext === '.webm') contentType = 'video/webm';
   else if (ext === '.mov') contentType = 'video/quicktime';
+  else if (ext === '.mkv') contentType = 'video/x-matroska';
+  else if (ext === '.m4v') contentType = 'video/mp4';
+  else if (ext === '.avi') contentType = 'video/x-msvideo';
   else if (ext === '.cube') contentType = 'text/plain';
 
-  if (range && contentType.startsWith('video/')) {
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  const range = req.headers.range;
+
+  if (range && (contentType.startsWith('video/') || contentType.startsWith('audio/'))) {
     const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    let start = parts[0] ? parseInt(parts[0], 10) : 0;
+    let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (isNaN(start)) start = 0;
+    if (isNaN(end) || end >= fileSize) end = fileSize - 1;
+
+    // Handle suffix byte range (e.g. bytes=-500)
+    if (!parts[0] && parts[1]) {
+      const suffix = parseInt(parts[1], 10);
+      if (!isNaN(suffix) && suffix > 0) {
+        start = Math.max(0, fileSize - suffix);
+        end = fileSize - 1;
+      }
+    }
+
+    if (start >= fileSize || start > end) {
+      res.setHeader('Content-Range', `bytes */${fileSize}`);
+      return res.status(416).send('Requested Range Not Satisfiable');
+    }
+
     const chunksize = end - start + 1;
-    const file = fs.createReadStream(filePath, { start, end });
-    const head = {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': contentType,
-    };
-    res.writeHead(206, head);
-    file.pipe(res);
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+    res.setHeader('Content-Length', chunksize);
+
+    if (req.method === 'HEAD') {
+      return res.status(206).end();
+    }
+
+    res.status(206);
+    const fileStream = fs.createReadStream(filePath, { start, end });
+    fileStream.on('error', (streamErr) => {
+      console.error('Streaming read error:', streamErr);
+      if (!res.headersSent) res.status(500).end();
+    });
+    fileStream.pipe(res);
   } else {
-    const head = {
-      'Content-Length': fileSize,
-      'Content-Type': contentType,
-      'Accept-Ranges': 'bytes',
-    };
-    res.writeHead(200, head);
-    fs.createReadStream(filePath).pipe(res);
+    res.setHeader('Content-Length', fileSize);
+
+    if (req.method === 'HEAD') {
+      return res.status(200).end();
+    }
+
+    res.status(200);
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.on('error', (streamErr) => {
+      console.error('File stream error:', streamErr);
+      if (!res.headersSent) res.status(500).end();
+    });
+    fileStream.pipe(res);
   }
 });
 
@@ -1235,8 +1315,6 @@ Recommend optimal enhancement parameters. Return strict JSON format with keys:
 
 // Vite Middleware mounting for development
 async function startServer() {
-  await ensureSampleVideos();
-
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -1257,6 +1335,8 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[ELITE MATRIX] Server running at http://0.0.0.0:${PORT}`);
+    // Non-blocking background initialization of sample videos
+    ensureSampleVideos().catch((err) => console.error('Sample generation background error:', err));
   });
 }
 

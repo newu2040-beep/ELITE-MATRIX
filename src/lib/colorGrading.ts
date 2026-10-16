@@ -244,6 +244,97 @@ export const LUT_PRESETS: LutDefinition[] = [
       return `colorbalance=rh=${(0.14 * Number(p)).toFixed(2)}:bh=${(0.06 * Number(p)).toFixed(2)}:rs=${(0.08 * Number(p)).toFixed(2)}`;
     },
   },
+  {
+    id: 'tokyo_drift',
+    name: 'Tokyo Cyber Drift',
+    category: 'Creative',
+    description: 'Hyper-saturated violet shadows, neon amber streetlights, and electric Japanese night vibe.',
+    previewColor: '#C084FC',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.22 * p}) saturate(${1 + 0.38 * p}) hue-rotate(${25 * p}deg)`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'overlay',
+      background: `linear-gradient(135deg, rgba(192, 132, 252, ${0.18 * (intensity / 100)}), rgba(251, 146, 60, ${0.14 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rs=${(0.12 * Number(p)).toFixed(2)}:bs=${(0.22 * Number(p)).toFixed(2)}:rh=${(0.18 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'vintage_polaroid',
+    name: 'Polaroid 600',
+    category: 'Vintage',
+    description: 'Faded nostalgic warm whites, cyan shadows, and analog instant film warmth.',
+    previewColor: '#F59E0B',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `sepia(${0.32 * p}) contrast(${1 - 0.08 * p}) brightness(${1 + 0.06 * p}) saturate(${1 + 0.1 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'soft-light',
+      background: `rgba(245, 158, 11, ${0.18 * (intensity / 100)})`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rs=${(0.15 * Number(p)).toFixed(2)}:gs=${(0.05 * Number(p)).toFixed(2)}:bh=${(-0.1 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'monochrome_silver',
+    name: 'Silver Gelatin Fine Art',
+    category: 'Monochrome',
+    description: 'Museum-grade silver gelatin B&W with deep crushed blacks and luminous highlights.',
+    previewColor: '#94A3B8',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `grayscale(${p}) contrast(${1 + 0.35 * p}) brightness(${1 - 0.03 * p})`;
+    },
+    ffmpegFilter: (intensity) => {
+      const p = intensity / 100;
+      return `hue=s=0,eq=contrast=${(1 + 0.35 * p).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'matrix_code',
+    name: 'Matrix Code Green',
+    category: 'Creative',
+    description: 'Phosphor green shadows, cool emerald highlights, and dark cybernetic mood.',
+    previewColor: '#22C55E',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.18 * p}) hue-rotate(${-35 * p}deg) saturate(${1 + 0.2 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'color',
+      background: `rgba(34, 197, 94, ${0.16 * (intensity / 100)})`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=gs=${(0.25 * Number(p)).toFixed(2)}:gh=${(0.12 * Number(p)).toFixed(2)}:rs=${(-0.15 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'cinestill_800t',
+    name: 'CineStill 800T',
+    category: 'Cinematic',
+    description: 'Tungsten-balanced night film stock with distinctive cool shadows and warm halation.',
+    previewColor: '#38BDF8',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.15 * p}) hue-rotate(${-12 * p}deg) saturate(${1 + 0.15 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'screen',
+      background: `linear-gradient(180deg, rgba(56, 189, 248, ${0.12 * (intensity / 100)}), rgba(239, 68, 68, ${0.08 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=bs=${(0.16 * Number(p)).toFixed(2)}:rh=${(0.12 * Number(p)).toFixed(2)}`;
+    },
+  },
 ];
 
 /**

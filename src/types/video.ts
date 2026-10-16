@@ -35,6 +35,11 @@ export type LutPresetType =
   | 'nordic_cold'
   | 'emerald_lush'
   | 'rose_quartz'
+  | 'tokyo_drift'
+  | 'vintage_polaroid'
+  | 'monochrome_silver'
+  | 'matrix_code'
+  | 'cinestill_800t'
   | 'custom';
 
 export type SocialProfileType =

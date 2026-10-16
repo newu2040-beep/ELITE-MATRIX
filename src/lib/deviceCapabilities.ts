@@ -10,6 +10,7 @@ export interface DeviceCapabilities {
   gpuRenderer: string;
   maxTextureSize: number;
   cpuCores: number;
+  isMobile: boolean;
   isBenchmarking: boolean;
 }
 
@@ -77,6 +78,7 @@ export function detectDeviceHardware(): {
   gpuRenderer: string;
   maxTextureSize: number;
   cpuCores: number;
+  isMobile: boolean;
 } {
   let colorGamut: 'Display P3 (Wide Color)' | 'sRGB (Standard)' = 'sRGB (Standard)';
   let isHdrSupported = false;
@@ -108,7 +110,13 @@ export function detectDeviceHardware(): {
     }
   }
 
-  return { colorGamut, isHdrSupported, gpuRenderer, maxTextureSize, cpuCores };
+  let isMobile = false;
+  if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+    isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 0 && window.innerWidth < 1024);
+  }
+
+  return { colorGamut, isHdrSupported, gpuRenderer, maxTextureSize, cpuCores, isMobile };
 }
 
 export function useDeviceCapabilities(): DeviceCapabilities {

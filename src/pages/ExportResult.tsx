@@ -58,10 +58,13 @@ export const ExportResult: React.FC = () => {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try { navigator.vibrate?.(15); } catch {}
     }
-    showToast('Starting video download...', 'info');
+    showToast('Downloading master video file...', 'info');
+
+    const downloadEndpoint = `/api/download/${exportData.exportId}`;
     const link = document.createElement('a');
-    link.href = exportData.downloadUrl;
-    link.setAttribute('download', exportData.outputMetadata.filename);
+    link.href = downloadEndpoint;
+    link.target = '_blank';
+    link.setAttribute('download', exportData.outputMetadata.filename || `enhanced_${exportData.exportId}.mp4`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -351,28 +354,39 @@ export const ExportResult: React.FC = () => {
             </motion.button>
           </div>
 
-          {/* Save to Projects */}
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={handleSaveToProjects}
-            className={`w-full h-11 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              saved
-                ? 'bg-[var(--accent-subtle,rgba(199,244,100,0.1))] border-[var(--accent,#C7F464)] text-[var(--accent,#C7F464)]'
-                : 'bg-[var(--bg-surface,#202020)] border-[var(--border-subtle,#2f2f2f)] text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)]'
-            }`}
-          >
-            {saved ? (
-              <>
-                <Check className="w-4 h-4 text-[var(--accent,#C7F464)]" />
-                <span>Saved to Library</span>
-              </>
-            ) : (
-              <>
-                <FolderPlus className="w-4 h-4" />
-                <span>Save to Projects Library</span>
-              </>
-            )}
-          </motion.button>
+          {/* Save to Projects & Open Fullscreen Stream */}
+          <div className="grid grid-cols-2 gap-2">
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={handleSaveToProjects}
+              className={`h-11 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                saved
+                  ? 'bg-[var(--accent-subtle,rgba(199,244,100,0.1))] border-[var(--accent,#C7F464)] text-[var(--accent,#C7F464)]'
+                  : 'bg-[var(--bg-surface,#202020)] border-[var(--border-subtle,#2f2f2f)] text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)]'
+              }`}
+            >
+              {saved ? (
+                <>
+                  <Check className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+                  <span>Saved to Library</span>
+                </>
+              ) : (
+                <>
+                  <FolderPlus className="w-4 h-4" />
+                  <span>Save to Library</span>
+                </>
+              )}
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => window.open(exportData.streamUrl, '_blank')}
+              className="h-11 rounded-xl bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#2f2f2f)] hover:border-[var(--accent,#C7F464)] text-xs font-semibold text-[var(--text-primary,#F5F4F0)] flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <Maximize2 className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+              <span>Native Stream</span>
+            </motion.button>
+          </div>
 
           {/* Back to Studio CTA */}
           <button

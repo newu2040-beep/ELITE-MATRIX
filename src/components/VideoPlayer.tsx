@@ -76,9 +76,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
     const handleWaiting = () => setIsLoading(true);
     const handlePlaying = () => setIsLoading(false);
+    let retried = false;
     const handleError = () => {
-      setHasError(true);
-      setIsLoading(false);
+      if (!retried && video) {
+        retried = true;
+        const cleanSrc = src.split('?')[0];
+        video.src = `${cleanSrc}?retry=${Date.now()}`;
+        video.load();
+        video.play().catch(() => {
+          setHasError(true);
+          setIsLoading(false);
+        });
+      } else {
+        setHasError(true);
+        setIsLoading(false);
+      }
     };
 
     video.addEventListener('play', handlePlay);
@@ -132,6 +144,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const time = parseFloat(e.target.value);
     videoRef.current.currentTime = time;
     setCurrentTime(time);
+  };
+
+  const handleReloadStream = () => {
+    setHasError(false);
+    setIsLoading(true);
+    if (videoRef.current) {
+      // Add timestamp to bust any cached failed response
+      const cleanSrc = src.split('?')[0];
+      videoRef.current.src = `${cleanSrc}?t=${Date.now()}`;
+      videoRef.current.load();
+      videoRef.current.play().catch(() => {});
+    }
   };
 
   const skipSeconds = (seconds: number) => {
@@ -188,6 +212,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         src={src}
         poster={poster}
         playsInline
+        preload="auto"
+        crossOrigin="anonymous"
         autoPlay={autoPlay}
         loop={loop}
         style={videoStyle}
@@ -215,12 +241,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Playback Error */}
+      {/* Playback Error with Retry button */}
       {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 px-4 text-center">
-          <AlertCircle className="w-8 h-8 text-[#EF4444] mb-2" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 px-4 text-center z-20 space-y-2">
+          <AlertCircle className="w-8 h-8 text-[#EF4444]" />
           <p className="text-sm font-semibold text-[#F5F4F0]">Unable to stream media</p>
-          <p className="text-xs text-[#888888] mt-1">Network or format handshake issue.</p>
+          <p className="text-xs text-[#888888]">Network or format handshake issue.</p>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleReloadStream();
+            }}
+            className="mt-2 px-3.5 py-1.5 rounded-xl bg-[#C7F464] text-[#121808] font-bold text-xs flex items-center gap-1.5 cursor-pointer hover:opacity-90 shadow-md"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+            <span>Retry Stream</span>
+          </button>
         </div>
       )}
 
