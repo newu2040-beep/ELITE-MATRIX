@@ -335,6 +335,279 @@ export const LUT_PRESETS: LutDefinition[] = [
       return `colorbalance=bs=${(0.16 * Number(p)).toFixed(2)}:rh=${(0.12 * Number(p)).toFixed(2)}`;
     },
   },
+  {
+    id: 'vhs_retro',
+    name: 'VHS Camcorder 90s',
+    category: 'Vintage',
+    description: 'Nostalgic analog magnetic tape aesthetic with slight chromatic warmth and bloom.',
+    previewColor: '#EC4899',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.12 * p}) saturate(${1 + 0.28 * p}) brightness(${1 + 0.04 * p}) sepia(${0.18 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'color-dodge',
+      background: `linear-gradient(90deg, rgba(236, 72, 153, ${0.06 * (intensity / 100)}), rgba(59, 130, 246, ${0.06 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rs=${(0.12 * Number(p)).toFixed(2)}:bs=${(0.08 * Number(p)).toFixed(2)},eq=saturation=${(1 + 0.2 * Number(p)).toFixed(2)}:contrast=${(1 + 0.1 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'technicolor_3strip',
+    name: 'Technicolor 3-Strip',
+    category: 'Vintage',
+    description: 'Golden Age Hollywood cinema with hyper-vivid dye-transfer reds, greens, and royal blues.',
+    previewColor: '#DC2626',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.22 * p}) saturate(${1 + 0.5 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'overlay',
+      background: `linear-gradient(135deg, rgba(220, 38, 38, ${0.1 * (intensity / 100)}), rgba(16, 185, 129, ${0.08 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `eq=contrast=${(1 + 0.2 * Number(p)).toFixed(2)}:saturation=${(1 + 0.45 * Number(p)).toFixed(2)},colorbalance=rs=${(0.12 * Number(p)).toFixed(2)}:gs=${(0.08 * Number(p)).toFixed(2)}:bs=${(0.1 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'film_noir_35mm',
+    name: '35mm Film Noir',
+    category: 'Monochrome',
+    description: 'Deep velvety silver gelatin monochrome with crushed blacks and radiant rim lighting.',
+    previewColor: '#1E293B',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `grayscale(${p}) contrast(${1 + 0.45 * p}) brightness(${1 - 0.05 * p})`;
+    },
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `hue=s=0,eq=contrast=${(1 + 0.4 * Number(p)).toFixed(2)}:brightness=${(-0.04 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'sunset_boulevard',
+    name: 'Sunset Boulevard',
+    category: 'Cinematic',
+    description: 'Warm peach-amber highlights, soft dusk shadows, and Californian golden glow.',
+    previewColor: '#F97316',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `sepia(${0.22 * p}) saturate(${1 + 0.3 * p}) brightness(${1 + 0.05 * p}) hue-rotate(${-5 * p}deg)`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'soft-light',
+      background: `linear-gradient(180deg, rgba(249, 115, 22, ${0.15 * (intensity / 100)}), rgba(236, 72, 153, ${0.1 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rh=${(0.18 * Number(p)).toFixed(2)}:gh=${(0.06 * Number(p)).toFixed(2)}:rs=${(0.14 * Number(p)).toFixed(2)}:bs=${(-0.1 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'arctic_glacier',
+    name: 'Arctic Glacier',
+    category: 'Cinematic',
+    description: 'Crystalline cyan highlights, cool steel shadows, and ultra-clean Scandinavian clarity.',
+    previewColor: '#06B6D4',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.14 * p}) saturate(${1 - 0.08 * p}) hue-rotate(${-20 * p}deg) brightness(${1 + 0.04 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'color',
+      background: `rgba(6, 182, 212, ${0.12 * (intensity / 100)})`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=bs=${(0.22 * Number(p)).toFixed(2)}:bh=${(0.16 * Number(p)).toFixed(2)}:rs=${(-0.14 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'champagne_rose',
+    name: 'Champagne Rose',
+    category: 'Creative',
+    description: 'Luminous platinum-rose tones, soft skin radiance, and modern luxury editorial finish.',
+    previewColor: '#F43F5E',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `brightness(${1 + 0.06 * p}) contrast(${1 - 0.02 * p}) saturate(${1 + 0.18 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'screen',
+      background: `linear-gradient(135deg, rgba(244, 63, 94, ${0.12 * (intensity / 100)}), rgba(245, 230, 200, ${0.12 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rh=${(0.12 * Number(p)).toFixed(2)}:gh=${(0.04 * Number(p)).toFixed(2)}:bh=${(0.08 * Number(p)).toFixed(2)}:rs=${(0.06 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'moody_emerald',
+    name: 'Moody Emerald',
+    category: 'Cinematic',
+    description: 'Deep atmospheric jade greens, velvety forest shadows, and dramatic cinematic weight.',
+    previewColor: '#047857',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.16 * p}) saturate(${1 + 0.12 * p}) hue-rotate(${18 * p}deg)`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'color-burn',
+      background: `rgba(4, 120, 87, ${0.1 * (intensity / 100)})`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=gs=${(0.18 * Number(p)).toFixed(2)}:gh=${(0.12 * Number(p)).toFixed(2)}:rs=${(-0.1 * Number(p)).toFixed(2)}:bs=${(-0.06 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'vivid_social',
+    name: 'Vivid Viral Pop (TikTok/Reels)',
+    category: 'Creative',
+    description: 'Punchy eye-popping vibrancy, boosted color separation, and radiant highlights tuned for social feeds.',
+    previewColor: '#EC4899',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.22 * p}) saturate(${1 + 0.5 * p}) brightness(${1 + 0.04 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'soft-light',
+      background: `linear-gradient(135deg, rgba(236, 72, 153, ${0.12 * (intensity / 100)}), rgba(245, 158, 11, ${0.08 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `eq=contrast=${(1 + 0.2 * Number(p)).toFixed(2)}:saturation=${(1 + 0.45 * Number(p)).toFixed(2)}:brightness=${(0.02 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'kodak_portra_400',
+    name: 'Kodak Portra 400',
+    category: 'Vintage',
+    description: 'Gold standard portrait film with flattering warm pastel skin tones and gentle highlight rolloff.',
+    previewColor: '#F59E0B',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `sepia(${0.22 * p}) contrast(${1 + 0.08 * p}) saturate(${1 + 0.18 * p}) brightness(${1 + 0.04 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'soft-light',
+      background: `rgba(245, 158, 11, ${0.1 * (intensity / 100)})`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rs=${(0.12 * Number(p)).toFixed(2)}:gs=${(0.04 * Number(p)).toFixed(2)}:bs=${(-0.08 * Number(p)).toFixed(2)}:rh=${(0.08 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'provia_100f',
+    name: 'Fuji Provia 100F',
+    category: 'Natural',
+    description: 'Legendary slide film known for ultra-faithful neutral color rendition, cobalt blues, and crisp clarity.',
+    previewColor: '#2563EB',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.14 * p}) saturate(${1 + 0.22 * p}) brightness(${1 + 0.02 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'color',
+      background: `rgba(37, 99, 235, ${0.06 * (intensity / 100)})`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=bs=${(0.08 * Number(p)).toFixed(2)}:bh=${(0.06 * Number(p)).toFixed(2)},eq=contrast=${(1 + 0.12 * Number(p)).toFixed(2)}:saturation=${(1 + 0.18 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'cinematic_teal_shadow',
+    name: 'Cinematic Copper & Teal',
+    category: 'Cinematic',
+    description: 'Modern Hollywood feature grade with dark oxidized teal shadows and glowing amber-copper midtones.',
+    previewColor: '#0D9488',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.2 * p}) saturate(${1 + 0.24 * p}) hue-rotate(${-14 * p}deg)`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'color',
+      background: `linear-gradient(180deg, rgba(13, 148, 136, ${0.14 * (intensity / 100)}), rgba(217, 119, 6, ${0.12 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rs=${(-0.12 * Number(p)).toFixed(2)}:gs=${(0.04 * Number(p)).toFixed(2)}:bs=${(0.18 * Number(p)).toFixed(2)}:rh=${(0.16 * Number(p)).toFixed(2)}:bh=${(-0.1 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'pastel_sakura_bloom',
+    name: 'Pastel Sakura Blossom',
+    category: 'Creative',
+    description: 'Dreamy Japanese cherry blossom aesthetic with soft lavender-rose highlights and airy contrast.',
+    previewColor: '#F472B6',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `brightness(${1 + 0.08 * p}) contrast(${1 - 0.04 * p}) saturate(${1 + 0.16 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'screen',
+      background: `linear-gradient(135deg, rgba(244, 114, 182, ${0.15 * (intensity / 100)}), rgba(192, 132, 252, ${0.1 * (intensity / 100)}))`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=rh=${(0.16 * Number(p)).toFixed(2)}:bh=${(0.12 * Number(p)).toFixed(2)}:gh=${(0.04 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'clean_contrast',
+    name: 'Clean High Dynamic Range',
+    category: 'Natural',
+    description: 'Pristine neutral enhancement that sharpens perceptual micro-contrast without coloring the scene.',
+    previewColor: '#CBD5E1',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.15 * p}) brightness(${1 + 0.03 * p}) saturate(${1 + 0.08 * p})`;
+    },
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `eq=contrast=${(1 + 0.14 * Number(p)).toFixed(2)}:brightness=${(0.02 * Number(p)).toFixed(2)}:saturation=${(1 + 0.08 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'bleach_gritty',
+    name: 'Gritty Bleach Bypass',
+    category: 'Creative',
+    description: 'Extreme dynamic metallic edge, desaturated tones, and heavy action-movie shadow contrast.',
+    previewColor: '#475569',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.4 * p}) saturate(${Math.max(0.2, 1 - 0.5 * p)}) brightness(${1 - 0.03 * p})`;
+    },
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `eq=contrast=${(1 + 0.38 * Number(p)).toFixed(2)}:saturation=${Math.max(0.2, 1 - 0.5 * Number(p)).toFixed(2)}`;
+    },
+  },
+  {
+    id: 'arctic_ice',
+    name: 'Arctic Diamond Ice',
+    category: 'Cinematic',
+    description: 'Chilled glacial cyans, clean bright whites, and deep navy mountain shadows.',
+    previewColor: '#38BDF8',
+    cssFilter: (intensity) => {
+      const p = intensity / 100;
+      return `contrast(${1 + 0.16 * p}) hue-rotate(${-18 * p}deg) brightness(${1 + 0.05 * p}) saturate(${1 - 0.05 * p})`;
+    },
+    overlayStyle: (intensity) => ({
+      mixBlendMode: 'color',
+      background: `rgba(56, 189, 248, ${0.14 * (intensity / 100)})`,
+    }),
+    ffmpegFilter: (intensity) => {
+      const p = (intensity / 100).toFixed(2);
+      return `colorbalance=bs=${(0.2 * Number(p)).toFixed(2)}:bh=${(0.18 * Number(p)).toFixed(2)}:rs=${(-0.12 * Number(p)).toFixed(2)}`;
+    },
+  },
 ];
 
 /**

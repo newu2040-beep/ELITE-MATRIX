@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDesktopMode } from '../context/DesktopModeContext';
-import { ArrowLeft, User as UserIcon, Monitor, Smartphone } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Monitor, Smartphone, Palette } from 'lucide-react';
+import { ThemeSelectorModal } from './ThemeSelectorModal';
 
 interface TopBarProps {
   title?: string;
@@ -15,67 +16,90 @@ export const TopBar: React.FC<TopBarProps> = ({ title, showBack = false }) => {
   const location = useLocation();
   const { user } = useAuth();
   const { isDesktopMode, toggleDesktopMode } = useDesktopMode();
+  const { activeThemeConfig } = useTheme();
+  const [themeModalOpen, setThemeModalOpen] = useState(false);
 
   const isHome = location.pathname === '/';
 
   return (
-    <header className="sticky top-0 z-30 h-14 bg-[var(--bg-primary,#171717)]/90 backdrop-blur-xl border-b border-[var(--border-subtle,#2f2f2f)] px-4 flex items-center justify-between transition-colors">
-      <div className="flex items-center gap-3">
-        {showBack && !isHome ? (
+    <>
+      <header className="sticky top-0 z-30 h-14 bg-[var(--bg-primary,#171717)]/90 backdrop-blur-xl border-b border-[var(--border-subtle,#2f2f2f)] px-4 flex items-center justify-between transition-colors">
+        <div className="flex items-center gap-3">
+          {showBack && !isHome ? (
+            <button
+              onClick={() => navigate(-1)}
+              aria-label="Back"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)] hover:bg-[var(--bg-surface,#222222)] transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          ) : null}
+
           <button
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)] hover:bg-[var(--bg-surface,#222222)] transition-colors cursor-pointer"
+            onClick={() => navigate('/')}
+            className="text-left font-bold tracking-tight text-base sm:text-lg text-[var(--text-primary,#F5F4F0)] flex items-center gap-2 hover:opacity-90 transition-opacity cursor-pointer"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <span>ELITE MATRIX</span>
+            {title && (
+              <>
+                <span className="text-[var(--text-muted,#888888)] font-normal text-sm">/</span>
+                <span className="text-sm font-medium text-[var(--text-muted,#888888)] truncate max-w-[140px] sm:max-w-[200px]">
+                  {title}
+                </span>
+              </>
+            )}
           </button>
-        ) : null}
+        </div>
 
-        <button
-          onClick={() => navigate('/')}
-          className="text-left font-bold tracking-tight text-base sm:text-lg text-[var(--text-primary,#F5F4F0)] flex items-center gap-2 hover:opacity-90 transition-opacity cursor-pointer"
-        >
-          <span>ELITE MATRIX</span>
-          {title && (
-            <>
-              <span className="text-[var(--text-muted,#888888)] font-normal text-sm">/</span>
-              <span className="text-sm font-medium text-[var(--text-muted,#888888)] truncate max-w-[140px] sm:max-w-[200px]">
-                {title}
-              </span>
-            </>
-          )}
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={toggleDesktopMode}
-          aria-label="Toggle Desktop Mode"
-          title={isDesktopMode ? "Switch to Mobile View" : "Switch to Desktop Workstation View"}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted,#888888)] hover:text-[var(--accent,#C7F464)] hover:bg-[var(--bg-surface,#222222)] transition-colors cursor-pointer"
-        >
-          {isDesktopMode ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
-        </button>
-
-        <button
-          onClick={() => navigate('/settings')}
-          aria-label="Settings and Profile"
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)] transition-colors rounded-xl cursor-pointer"
-        >
-          {user?.photoURL ? (
-            <img
-              src={user.photoURL}
-              alt={user.displayName}
-              referrerPolicy="no-referrer"
-              className="w-7 h-7 rounded-full border border-[var(--border-strong,#3f3f3f)] object-cover"
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Quick Theme Switcher Pill */}
+          <button
+            onClick={() => setThemeModalOpen(true)}
+            aria-label="Change Studio Theme"
+            title={`Active Theme: ${activeThemeConfig.name}`}
+            className="h-9 px-2.5 rounded-xl border border-[var(--border-subtle,#2f2f2f)] bg-[var(--bg-surface,#222222)] hover:border-[var(--accent,#C7F464)] flex items-center gap-1.5 transition-all cursor-pointer group"
+          >
+            <div
+              className="w-3.5 h-3.5 rounded-full shadow-sm shrink-0 border border-white/20"
+              style={{ backgroundColor: activeThemeConfig.accentColor }}
             />
-          ) : (
-            <div className="w-7 h-7 rounded-full bg-[var(--bg-surface,#222222)] border border-[var(--border-strong,#3f3f3f)] flex items-center justify-center text-xs font-semibold text-[var(--accent,#C7F464)]">
-              {user?.displayName ? user.displayName.charAt(0).toUpperCase() : <UserIcon className="w-3.5 h-3.5" />}
-            </div>
-          )}
-        </button>
-      </div>
-    </header>
+            <span className="text-xs font-semibold hidden md:inline text-[var(--text-primary,#F5F4F0)]">
+              {activeThemeConfig.name}
+            </span>
+            <Palette className="w-3.5 h-3.5 text-[var(--text-muted,#888888)] group-hover:text-[var(--accent,#C7F464)]" />
+          </button>
+
+          <button
+            onClick={toggleDesktopMode}
+            aria-label="Toggle Desktop Mode"
+            title={isDesktopMode ? "Switch to Mobile View" : "Switch to Desktop Workstation View"}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted,#888888)] hover:text-[var(--accent,#C7F464)] hover:bg-[var(--bg-surface,#222222)] transition-colors cursor-pointer"
+          >
+            {isDesktopMode ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => navigate('/settings')}
+            aria-label="Settings and Profile"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)] transition-colors rounded-xl cursor-pointer"
+          >
+            {user?.photoURL ? (
+              <img
+                src={user.photoURL}
+                alt={user.displayName}
+                referrerPolicy="no-referrer"
+                className="w-7 h-7 rounded-full border border-[var(--border-strong,#3f3f3f)] object-cover"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-[var(--bg-surface,#222222)] border border-[var(--border-strong,#3f3f3f)] flex items-center justify-center text-xs font-semibold text-[var(--accent,#C7F464)]">
+                {user?.displayName ? user.displayName.charAt(0).toUpperCase() : <UserIcon className="w-3.5 h-3.5" />}
+              </div>
+            )}
+          </button>
+        </div>
+      </header>
+
+      <ThemeSelectorModal isOpen={themeModalOpen} onClose={() => setThemeModalOpen(false)} />
+    </>
   );
 };

@@ -17,6 +17,13 @@ import {
   getRealtimeVideoFilter,
 } from '../lib/colorGrading';
 import { useDeviceCapabilities } from '../lib/deviceCapabilities';
+import { inspectVideoFileClient, buildClientFallbackMetadata } from '../lib/clientVideoInspect';
+import {
+  getSavedDefaultEnhancementSettings,
+  saveFullStudioDefaultPreferences,
+  getBasicDefaultPreferences,
+} from '../lib/defaultPreferences';
+import { SocialShareModal } from '../components/SocialShareModal';
 import {
   Sparkles,
   Sliders,
@@ -43,8 +50,14 @@ import {
   Check,
   Scissors,
   Volume2,
+  VolumeX,
   FolderOpen,
   Share2,
+  Music,
+  Download,
+  Play,
+  Pause,
+  Search,
 } from 'lucide-react';
 
 const PRESET_CONFIGS: Record<PresetType, Partial<EnhancementSettings>> = {
@@ -198,6 +211,8 @@ export const Enhance: React.FC = () => {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lutInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const customAudioPlayerRef = useRef<HTMLAudioElement>(null);
 
   const deviceCaps = useDeviceCapabilities();
 
@@ -212,62 +227,32 @@ export const Enhance: React.FC = () => {
   const [galleryModalOpen, setGalleryModalOpen] = useState(false);
   const [socialOptimizerModalOpen, setSocialOptimizerModalOpen] = useState(false);
   const [deviceInfoModalOpen, setDeviceInfoModalOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   // Clips & Upload state
   const [sampleClips, setSampleClips] = useState<{ id: string; name: string; description: string; metadata?: VideoMetadata }[]>([]);
   const [uploadingClip, setUploadingClip] = useState(false);
   const [uploadingLut, setUploadingLut] = useState(false);
+  const [uploadingAudioTrack, setUploadingAudioTrack] = useState(false);
+  const [extractingAudioTrack, setExtractingAudioTrack] = useState(false);
+  const [extractedAudioInfo, setExtractedAudioInfo] = useState<{ url: string; filename: string; duration: number } | null>(null);
+  const [isPlayingCustomAudio, setIsPlayingCustomAudio] = useState(false);
+
+  // LUT Gallery Filtering
+  const [lutCategory, setLutCategory] = useState<'All' | 'Cinematic' | 'Vintage' | 'Creative' | 'Natural'>('All');
+  const [lutSearch, setLutSearch] = useState('');
 
   // Accordion sections
-  const [colorGradingOpen, setColorGradingOpen] = useState(true);
-  const [lutFiltersOpen, setLutFiltersOpen] = useState(true);
+  const [colorGradingOpen, setColorGradingOpen] = useState(false);
+  const [lutFiltersOpen, setLutFiltersOpen] = useState(false);
   const [aspectRatioOpen, setAspectRatioOpen] = useState(false);
-  const [outputSettingsOpen, setOutputSettingsOpen] = useState(false);
-  const [audioSettingsOpen, setAudioSettingsOpen] = useState(false);
+  const [outputSettingsOpen, setOutputSettingsOpen] = useState(true);
+  const [audioSettingsOpen, setAudioSettingsOpen] = useState(true);
 
-  // Master Settings state
-  const [settings, setSettings] = useState<EnhancementSettings>({
-    preset: 'maximum_quality',
-    targetResolution: '4k',
-    targetFps: 60,
-    motionInterpolation: true,
-    interpolationMode: 'standard',
-    denoiseLevel: 3,
-    sharpenLevel: 5,
-    exposure: 0,
-    brightness: 0,
-    contrast: 1,
-    saturation: 1,
-    vibrance: 0,
-    temperature: 0,
-    tint: 0,
-    hueShift: 0,
-    sepia: 0,
-    gamma: 0,
-    highlights: 0,
-    shadows: 0,
-    vignette: 0,
-    lutPreset: 'none',
-    lutIntensity: 100,
-    aspectRatio: 'original',
-    aspectRatioFit: 'crop',
-    codec: 'hevc',
-    container: 'mp4',
-    bitrateMode: 'maximum',
-    customBitrateMbps: 35,
-    trimActive: false,
-    trimStart: 0,
-    trimEnd: 10,
-    audioMode: 'preserve',
-    audioCodec: 'aac',
-    audioBitrateKbps: 320,
-    audioSampleRate: 48000,
-    audioChannels: 'stereo',
-    audioNormalization: false,
-    audioVocalBoost: false,
-    audioBassPunch: false,
-    audioDeHum: false,
-  });
+  // Master Settings state initialized strictly from saved Default Preferences
+  const [settings, setSettings] = useState<EnhancementSettings>(() =>
+    getSavedDefaultEnhancementSettings()
+  );
 
   // Load active video from sessionStorage or samples
   useEffect(() => {
@@ -364,14 +349,20 @@ export const Enhance: React.FC = () => {
     }
   };
 
-  // Reset all adjustments
+  // Reset all adjustments strictly to saved default preferences
   const handleReset = () => {
-    handlePresetSelect('maximum_quality');
     setAiNote(null);
-    if (video) {
-      setSettings((p) => ({ ...p, trimActive: false, trimStart: 0, trimEnd: video.duration }));
-    }
-    showToast('Reset to default maximum quality preset', 'info');
+    const savedDefaults = getSavedDefaultEnhancementSettings(video?.duration || 10);
+    setSettings(savedDefaults);
+    showToast('Reset to your saved default preferences', 'info');
+  };
+
+  const handleSaveCurrentAsDefault = () => {
+    saveFullStudioDefaultPreferences(settings);
+    showToast(
+      `Saved as Default Preferences (${settings.targetResolution.toUpperCase()} · ${settings.targetFps === 'preserve' ? 'Original FPS' : `${settings.targetFps} FPS`} · ${settings.codec.toUpperCase()})`,
+      'success'
+    );
   };
 
   // Reset Color Grading specifically
@@ -398,8 +389,15 @@ export const Enhance: React.FC = () => {
   // Handle direct file upload from File object
   const handleDirectFileUpload = async (file: File) => {
     setUploadingClip(true);
+    const inspected = await inspectVideoFileClient(file);
     const formData = new FormData();
     formData.append('video', file);
+    formData.append('width', String(inspected.width));
+    formData.append('height', String(inspected.height));
+    formData.append('duration', String(inspected.duration));
+    if (inspected.thumbnailDataUrl) {
+      formData.append('thumbnailDataUrl', inspected.thumbnailDataUrl);
+    }
 
     try {
       const res = await fetch('/api/upload', {
@@ -411,17 +409,31 @@ export const Enhance: React.FC = () => {
         throw new Error(err.error || 'Failed to inspect uploaded video.');
       }
       const data = await res.json();
-      setVideo(data.metadata);
+      const metadata: VideoMetadata = {
+        ...data.metadata,
+        thumbnailUrl: data.metadata.thumbnailUrl || inspected.thumbnailDataUrl,
+      };
+      setVideo(metadata);
       setSettings((p) => ({
         ...p,
         trimActive: false,
         trimStart: 0,
-        trimEnd: data.metadata.duration,
+        trimEnd: metadata.duration,
       }));
-      sessionStorage.setItem('elitematrix_active_video', JSON.stringify(data.metadata));
-      showToast(`Loaded "${data.metadata.filename}"`, 'success');
+      sessionStorage.setItem('elitematrix_active_video', JSON.stringify(metadata));
+      showToast(`Loaded "${metadata.filename}"`, 'success');
     } catch (err: unknown) {
-      showToast((err as Error).message, 'error');
+      console.warn('Server upload/inspection failed, using client-side HTML5 inspection fallback:', err);
+      const fallbackMetadata = buildClientFallbackMetadata(file, inspected);
+      setVideo(fallbackMetadata);
+      setSettings((p) => ({
+        ...p,
+        trimActive: false,
+        trimStart: 0,
+        trimEnd: fallbackMetadata.duration,
+      }));
+      sessionStorage.setItem('elitematrix_active_video', JSON.stringify(fallbackMetadata));
+      showToast(`Loaded "${fallbackMetadata.filename}" via browser media engine`, 'info');
     } finally {
       setUploadingClip(false);
     }
@@ -460,6 +472,217 @@ export const Enhance: React.FC = () => {
     } finally {
       setUploadingLut(false);
       if (lutInputRef.current) lutInputRef.current.value = '';
+    }
+  };
+
+  // Handle Custom Audio upload from user's device
+  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAudioTrack(true);
+
+    const previewUrl = URL.createObjectURL(file);
+
+    const formData = new FormData();
+    formData.append('audio', file);
+
+    try {
+      const res = await fetch('/api/upload-audio', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to import audio track from device.');
+      }
+      const data = await res.json();
+      setSettings((prev) => ({
+        ...prev,
+        customAudioPath: data.audioPath,
+        customAudioUrl: data.audioUrl || previewUrl,
+        customAudioFilename: data.filename || file.name,
+        customAudioAction: prev.customAudioAction && prev.customAudioAction !== 'none' ? prev.customAudioAction : 'replace',
+        customAudioLoop: true,
+        customAudioVolume: prev.customAudioVolume ?? 0.85,
+        originalAudioVolume: prev.originalAudioVolume ?? 1.0,
+        preset: 'custom',
+      }));
+      showToast(`Audio track imported & synced to video (${video?.duration ? video.duration.toFixed(1) + 's' : 'clip duration'})`, 'success');
+    } catch (err: unknown) {
+      showToast((err as Error).message || 'Audio upload failed', 'error');
+    } finally {
+      setUploadingAudioTrack(false);
+      if (audioInputRef.current) audioInputRef.current.value = '';
+    }
+  };
+
+  // Extract Audio from Video automatically synced to video duration
+  const handleExtractAudioStudio = async (format: 'mp3' | 'wav' | 'aac' = 'mp3', autoAssignAsCustom = false) => {
+    if (!video) return;
+    setExtractingAudioTrack(true);
+    try {
+      const res = await fetch('/api/audio/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: video.filePath,
+          videoId: video.id,
+          format,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to extract audio track from video.');
+      }
+      const data = await res.json();
+      setExtractedAudioInfo({
+        url: data.audioUrl,
+        filename: data.filename,
+        duration: data.duration || video.duration,
+      });
+
+      if (autoAssignAsCustom) {
+        setSettings((prev) => ({
+          ...prev,
+          customAudioPath: data.audioPath,
+          customAudioUrl: data.audioUrl,
+          customAudioFilename: data.filename,
+          customAudioAction: 'replace',
+          customAudioLoop: true,
+          preset: 'custom',
+        }));
+        showToast(`Audio track extracted & set as active (${(data.duration || video.duration).toFixed(1)}s)`, 'success');
+      } else {
+        showToast(`Extracted audio track (${format.toUpperCase()}). Downloading...`, 'success');
+        const a = document.createElement('a');
+        a.href = data.audioUrl;
+        a.download = data.filename || `audio_${video.id}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err: unknown) {
+      showToast((err as Error).message || 'Failed to extract audio track', 'error');
+    } finally {
+      setExtractingAudioTrack(false);
+    }
+  };
+
+  // Toggle Custom Audio Playback preview in Studio
+  const handleTogglePlayCustomAudio = () => {
+    if (!customAudioPlayerRef.current) return;
+    if (isPlayingCustomAudio) {
+      customAudioPlayerRef.current.pause();
+      setIsPlayingCustomAudio(false);
+    } else {
+      customAudioPlayerRef.current.play().then(() => {
+        setIsPlayingCustomAudio(true);
+      }).catch(() => {
+        setIsPlayingCustomAudio(false);
+      });
+    }
+  };
+
+  // 1-Click Social Media Format presets
+  const applySocialFormatPreset = (formatKey: 'tiktok_reels' | 'instagram_square' | 'youtube_4k' | 'twitter_x' | 'cinematic_master' | 'low_end_safe') => {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate?.(10); } catch {}
+    }
+    if (formatKey === 'tiktok_reels') {
+      setSettings((p) => ({
+        ...p,
+        socialProfile: 'tiktok_reels',
+        aspectRatio: '9:16',
+        aspectRatioFit: 'crop',
+        targetResolution: '1080p',
+        targetFps: 60,
+        motionInterpolation: true,
+        interpolationMode: 'optical_flow',
+        codec: 'h264',
+        container: 'mp4',
+        bitrateMode: 'high',
+        preset: 'custom',
+      }));
+      showToast('Tuned for TikTok & Reels (9:16 Vertical · 60 FPS Optical Flow)', 'success');
+    } else if (formatKey === 'instagram_square') {
+      setSettings((p) => ({
+        ...p,
+        socialProfile: 'instagram_square',
+        aspectRatio: '1:1',
+        aspectRatioFit: 'crop',
+        targetResolution: '1080p',
+        targetFps: 60,
+        motionInterpolation: true,
+        interpolationMode: 'optical_flow',
+        codec: 'h264',
+        container: 'mp4',
+        bitrateMode: 'high',
+        preset: 'custom',
+      }));
+      showToast('Tuned for Instagram Square Feed (1:1 · 60 FPS Master)', 'success');
+    } else if (formatKey === 'youtube_4k') {
+      setSettings((p) => ({
+        ...p,
+        socialProfile: 'youtube_4k',
+        aspectRatio: '16:9',
+        aspectRatioFit: 'crop',
+        targetResolution: '4k',
+        targetFps: 60,
+        motionInterpolation: true,
+        interpolationMode: 'optical_flow',
+        codec: 'hevc',
+        container: 'mp4',
+        bitrateMode: 'maximum',
+        preset: 'custom',
+      }));
+      showToast('Tuned for YouTube 4K Ultra HD (3840×2160 · 60 FPS Optical Flow)', 'success');
+    } else if (formatKey === 'twitter_x') {
+      setSettings((p) => ({
+        ...p,
+        socialProfile: 'twitter_x',
+        aspectRatio: '16:9',
+        aspectRatioFit: 'crop',
+        targetResolution: '1080p',
+        targetFps: 60,
+        motionInterpolation: true,
+        interpolationMode: 'motion_compensated',
+        codec: 'h264',
+        container: 'mp4',
+        bitrateMode: 'high',
+        preset: 'custom',
+      }));
+      showToast('Tuned for X / Twitter Feed (1080p · Universal MP4)', 'success');
+    } else if (formatKey === 'cinematic_master') {
+      setSettings((p) => ({
+        ...p,
+        socialProfile: 'cinematic_master',
+        aspectRatio: '21:9',
+        aspectRatioFit: 'crop',
+        targetResolution: '4k',
+        targetFps: 60,
+        motionInterpolation: true,
+        interpolationMode: 'optical_flow',
+        codec: 'prores',
+        container: 'mov',
+        bitrateMode: 'prores_hq',
+        preset: 'custom',
+      }));
+      showToast('Tuned for UltraWide Cinema (21:9 · Apple ProRes 422 HQ)', 'success');
+    } else if (formatKey === 'low_end_safe') {
+      setSettings((p) => ({
+        ...p,
+        socialProfile: 'custom',
+        aspectRatio: 'original',
+        targetResolution: '720p',
+        targetFps: 30,
+        motionInterpolation: false,
+        interpolationMode: 'standard',
+        codec: 'h264',
+        container: 'mp4',
+        bitrateMode: 'medium',
+        preset: 'custom',
+      }));
+      showToast('Tuned for Low-End Devices (H.264 Baseline 720p/30 · Playable Everywhere)', 'success');
     }
   };
 
@@ -642,6 +865,16 @@ export const Enhance: React.FC = () => {
 
               <motion.button
                 whileTap={{ scale: 0.95 }}
+                onClick={() => setShareModalOpen(true)}
+                title="Direct Share to TikTok, Reels, Shorts"
+                className="text-xs text-[var(--accent,#C7F464)] bg-[var(--accent-subtle,rgba(199,244,100,0.1))] px-2.5 py-0.5 rounded-full border border-[var(--accent-glow,rgba(199,244,100,0.25))] flex items-center gap-1 shrink-0 font-medium cursor-pointer"
+              >
+                <Share2 className="w-3 h-3" />
+                <span>Share</span>
+              </motion.button>
+
+              <motion.button
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setGalleryModalOpen(true)}
                 className="text-xs text-[var(--accent,#C7F464)] hover:underline flex items-center gap-1 shrink-0 font-medium cursor-pointer"
               >
@@ -742,6 +975,47 @@ export const Enhance: React.FC = () => {
                 {aiNote}
               </p>
             )}
+          </div>
+
+          {/* Saved Default Preferences Active Banner */}
+          <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--bg-primary,#171717)] border border-[var(--accent,#C7F464)]/40">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[var(--accent,#C7F464)] shrink-0" />
+                <span className="text-xs font-semibold text-[var(--text-primary,#F5F4F0)] truncate">
+                  Saved Default Preferences
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--text-muted,#888888)] font-tabular truncate mt-0.5">
+                {getBasicDefaultPreferences().resolution.toUpperCase()} ·{' '}
+                {getBasicDefaultPreferences().fps === 'preserve'
+                  ? 'Original FPS'
+                  : `${getBasicDefaultPreferences().fps} FPS`}{' '}
+                · {getBasicDefaultPreferences().codec.toUpperCase()}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <motion.button
+                whileTap={{ scale: 0.96 }}
+                type="button"
+                onClick={handleReset}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  settings.preset === 'custom'
+                    ? 'bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)]'
+                    : 'bg-[var(--bg-surface-elevated,#282828)] text-[var(--text-primary,#F5F4F0)] border border-[var(--border-strong,#3f3f3f)]'
+                }`}
+              >
+                {settings.preset === 'custom' ? 'Active' : 'Apply Default'}
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.96 }}
+                type="button"
+                onClick={handleSaveCurrentAsDefault}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[var(--bg-surface-elevated,#282828)] hover:bg-[var(--border-strong,#333333)] text-[var(--accent,#C7F464)] border border-[var(--border-strong,#3f3f3f)] transition-all cursor-pointer"
+              >
+                Save Current
+              </motion.button>
+            </div>
           </div>
 
           {/* Preset Buttons Grid */}
@@ -1115,8 +1389,8 @@ export const Enhance: React.FC = () => {
             <div className="flex items-center gap-2.5">
               <Palette className="w-4 h-4 text-[var(--accent,#C7F464)]" />
               <div>
-                <h2 className="text-sm font-semibold text-[var(--text-primary,#F5F4F0)]">Inbuilt LUT Filters & Custom LUTs</h2>
-                <p className="text-[11px] text-[var(--text-muted,#888888)]">12 Inbuilt Color Lookups + DaVinci / Premiere .cube Upload</p>
+                <h2 className="text-sm font-semibold text-[var(--text-primary,#F5F4F0)]">Cinematic LUT Filters & 3D .cube</h2>
+                <p className="text-[11px] text-[var(--text-muted,#888888)]">32+ Inbuilt Cinematic Grades, Film Stocks & Custom Upload</p>
               </div>
             </div>
             {lutFiltersOpen ? <ChevronUp className="w-4 h-4 text-[var(--text-muted,#888888)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-muted,#888888)]" />}
@@ -1129,11 +1403,49 @@ export const Enhance: React.FC = () => {
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                className="p-4 pt-0 space-y-4 border-t border-[var(--border-subtle,#2b2b2b)]"
+                className="p-4 pt-0 space-y-3.5 border-t border-[var(--border-subtle,#2b2b2b)]"
               >
+                {/* Category Pills & Search */}
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                    {(['All', 'Cinematic', 'Vintage', 'Creative', 'Natural'] as const).map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setLutCategory(cat)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition-colors ${
+                          lutCategory === cat
+                            ? 'bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)]'
+                            : 'bg-[var(--bg-primary,#171717)] text-[var(--text-muted,#888888)] border border-[var(--border-subtle,#282828)] hover:text-[var(--text-primary,#F5F4F0)]'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted,#888888)]" />
+                    <input
+                      type="text"
+                      value={lutSearch}
+                      onChange={(e) => setLutSearch(e.target.value)}
+                      placeholder="Search 32+ LUTs (e.g., Portra, Viral Pop, Matrix, Sunset)..."
+                      className="w-full bg-[var(--bg-primary,#171717)] border border-[var(--border-subtle,#282828)] rounded-xl pl-8 pr-3 py-1.5 text-xs text-[var(--text-primary,#F5F4F0)] placeholder:text-[var(--text-muted,#666666)]"
+                    />
+                  </div>
+                </div>
+
                 {/* LUT Swatch Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2">
-                  {LUT_PRESETS.map((lut) => {
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+                  {LUT_PRESETS.filter((lut) => {
+                    if (lutCategory !== 'All' && lut.category !== lutCategory) return false;
+                    if (lutSearch.trim()) {
+                      const q = lutSearch.toLowerCase();
+                      return lut.name.toLowerCase().includes(q) || lut.description.toLowerCase().includes(q);
+                    }
+                    return true;
+                  }).map((lut) => {
                     const isSelected = settings.lutPreset === lut.id;
                     return (
                       <motion.button
@@ -1363,20 +1675,176 @@ export const Enhance: React.FC = () => {
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 className="p-4 pt-0 space-y-4 border-t border-[var(--border-subtle,#2b2b2b)]"
               >
+                {/* 1-Click Social Media Video Format Profiles */}
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-[var(--text-primary,#F5F4F0)] flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-[var(--accent,#C7F464)]" />
+                      <span>Social Media Fast-Format Presets</span>
+                    </span>
+                    <span className="text-[10px] text-[var(--text-muted,#888888)]">Auto-configures Ratio, FPS & Codec</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      {
+                        id: 'tiktok_reels',
+                        title: 'TikTok · Reels · Shorts',
+                        desc: '9:16 Vertical · 60 FPS Optical Flow',
+                        icon: '📱',
+                        active: settings.aspectRatio === '9:16' && settings.targetFps === 60,
+                      },
+                      {
+                        id: 'instagram_square',
+                        title: 'Instagram Feed (1:1)',
+                        desc: '1080×1080 · 60 FPS Feed Master',
+                        icon: '📸',
+                        active: settings.aspectRatio === '1:1',
+                      },
+                      {
+                        id: 'youtube_4k',
+                        title: 'YouTube 4K Ultra HD',
+                        desc: '3840×2160 · 60 FPS High Bitrate',
+                        icon: '▶️',
+                        active: settings.targetResolution === '4k' && settings.aspectRatio === '16:9',
+                      },
+                      {
+                        id: 'twitter_x',
+                        title: 'X / Twitter Feed',
+                        desc: '16:9 1080p · Universal Playback',
+                        icon: '𝕏',
+                        active: settings.socialProfile === 'twitter_x',
+                      },
+                      {
+                        id: 'cinematic_master',
+                        title: 'Cinematic UltraWide (21:9)',
+                        desc: '21:9 · Apple ProRes 422 HQ',
+                        icon: '🎬',
+                        active: settings.aspectRatio === '21:9' || settings.codec === 'prores',
+                      },
+                      {
+                        id: 'low_end_safe',
+                        title: 'Low-End Safe Playback',
+                        desc: '720p/30 · Baseline MP4 (No Handshake Error)',
+                        icon: '⚡',
+                        active: settings.targetResolution === '720p' && settings.targetFps === 30,
+                      },
+                    ].map((fmt) => (
+                      <motion.button
+                        whileTap={{ scale: 0.96 }}
+                        key={fmt.id}
+                        type="button"
+                        onClick={() => applySocialFormatPreset(fmt.id as any)}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2 ${
+                          fmt.active
+                            ? 'bg-[var(--accent-subtle,rgba(199,244,100,0.1))] border-[var(--accent,#C7F464)] text-[var(--text-primary,#F5F4F0)] shadow-sm'
+                            : 'bg-[var(--bg-primary,#171717)] border-[var(--border-subtle,#282828)] hover:border-[var(--border-strong,#383838)] text-[var(--text-muted,#888888)]'
+                        }`}
+                      >
+                        <span className="text-base leading-none shrink-0 mt-0.5">{fmt.icon}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-bold truncate ${fmt.active ? 'text-[var(--accent,#C7F464)]' : 'text-[var(--text-primary,#F5F4F0)]'}`}>
+                            {fmt.title}
+                          </p>
+                          <p className="text-[10px] text-[var(--text-muted,#888888)] truncate mt-0.5">
+                            {fmt.desc}
+                          </p>
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Optical Flow & AI Motion Smoothing Card */}
+                <div className="p-3.5 bg-[var(--bg-primary,#171717)] border border-[var(--border-subtle,#2b2b2b)] rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+                      <div>
+                        <p className="text-xs font-bold text-[var(--text-primary,#F5F4F0)]">
+                          Optical Flow & Motion Smoothing
+                        </p>
+                        <p className="text-[10px] text-[var(--text-muted,#888888)]">
+                          Eliminates jitter, synthesizes motion vectors for silky smooth cadence
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(settings.motionInterpolation)}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          setSettings((p) => ({
+                            ...p,
+                            motionInterpolation: active,
+                            targetFps: active && p.targetFps === 'preserve' ? 60 : p.targetFps,
+                            preset: 'custom',
+                          }));
+                          showToast(active ? 'Optical Flow Smoothing enabled (60+ FPS)' : 'Optical Flow disabled', 'info');
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-[var(--border-strong,#333333)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--accent,#C7F464)]"></div>
+                    </label>
+                  </div>
+
+                  {settings.motionInterpolation && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="space-y-2 pt-1 border-t border-[var(--border-subtle,#262626)]"
+                    >
+                      <span className="text-[11px] font-semibold text-[var(--text-muted,#888888)] block">
+                        Interpolation Algorithm
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5 text-xs">
+                        {[
+                          { id: 'optical_flow', name: 'Bi-Dir Optical Flow (MCI)', desc: 'True synthesized vectors' },
+                          { id: 'motion_compensated', name: 'Compensated (AOBMC)', desc: 'Fast-action & sports' },
+                          { id: 'blend', name: 'Cinematic Frame Blend', desc: 'Soft shutter smoothing' },
+                          { id: 'standard', name: 'Clean Frame Refresh', desc: 'Artifact-free cadence' },
+                        ].map((alg) => (
+                          <button
+                            key={alg.id}
+                            type="button"
+                            onClick={() => setSettings((p) => ({ ...p, interpolationMode: alg.id as any, preset: 'custom' }))}
+                            className={`p-2 rounded-xl text-left border cursor-pointer transition-colors ${
+                              settings.interpolationMode === alg.id
+                                ? 'bg-[var(--bg-surface-elevated,#262626)] border-[var(--accent,#C7F464)] text-[var(--text-primary,#F5F4F0)]'
+                                : 'bg-[var(--bg-surface,#202020)] border-[var(--border-subtle,#282828)] text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)]'
+                            }`}
+                          >
+                            <p className="text-[11px] font-bold truncate">{alg.name}</p>
+                            <p className="text-[9px] text-[var(--text-muted,#888888)] truncate">{alg.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="p-2 bg-[var(--bg-surface,#202020)] rounded-xl border border-[var(--border-subtle,#262626)] text-[10px] text-[var(--text-muted,#888888)] flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[var(--accent,#C7F464)] shrink-0" />
+                        <span>Optical Flow vector estimation will synthesize {settings.targetFps === 'preserve' ? 60 : settings.targetFps} FPS intermediate frames.</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
                 {/* Resolution Grid */}
-                <div className="space-y-1.5 pt-2">
+                <div className="space-y-1.5 pt-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-[var(--text-muted,#888888)]">Master Target Resolution</span>
                     <span className="font-tabular font-semibold text-[var(--accent,#C7F464)]">
-                      {targetDims.width} × {targetDims.height}
+                      {targetDims.width} × {targetDims.height} ({settings.targetResolution.toUpperCase()})
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-5 gap-1.5">
                     {(
                       [
                         { id: '4k', label: '4K UHD' },
                         { id: '1440p', label: '1440p QHD' },
                         { id: '1080p', label: '1080p FHD' },
+                        { id: '720p', label: '720p HD' },
                         { id: 'original', label: 'Original' },
                       ] as const
                     ).map((res) => {
@@ -1400,7 +1868,7 @@ export const Enhance: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Target Frame Rate: Includes 90 FPS and 120 FPS ProMotion */}
+                {/* Target Frame Rate: Includes 24, 30, 60, 90, 120 FPS and Preserve */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
@@ -1416,10 +1884,11 @@ export const Enhance: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-5 gap-1.5">
+                  <div className="grid grid-cols-6 gap-1.5">
                     {(
                       [
                         { id: 'preserve', label: 'Original' },
+                        { id: 24, label: '24 FPS' },
                         { id: 30, label: '30 FPS' },
                         { id: 60, label: '60 FPS' },
                         { id: 90, label: '90 FPS', tag: deviceCaps.is90HzSupported ? 'Supported' : 'Master' },
@@ -1462,11 +1931,12 @@ export const Enhance: React.FC = () => {
                 {/* Codec & Master Formats */}
                 <div className="space-y-1.5">
                   <span className="text-xs text-[var(--text-muted,#888888)]">Master Video Codec</span>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-4 gap-1.5">
                     {[
                       { id: 'hevc', label: 'H.265 / HEVC', sub: 'High Efficiency' },
                       { id: 'h264', label: 'H.264 / AVC', sub: 'Universal' },
-                      { id: 'prores', label: 'ProRes 422 HQ', sub: 'Apple Studio Master' },
+                      { id: 'prores', label: 'ProRes 422', sub: 'Apple Master' },
+                      { id: 'vp9', label: 'VP9 WebM', sub: 'Web Stream' },
                     ].map((cd) => {
                       const isSelected = settings.codec === cd.id;
                       return (
@@ -1478,7 +1948,7 @@ export const Enhance: React.FC = () => {
                             setSettings((p) => ({
                               ...p,
                               codec: cd.id as any,
-                              container: cd.id === 'prores' ? 'mov' : 'mp4',
+                              container: cd.id === 'prores' ? 'mov' : cd.id === 'vp9' ? 'webm' : 'mp4',
                               bitrateMode: cd.id === 'prores' ? 'prores_hq' : p.bitrateMode,
                               preset: 'custom',
                             }));
@@ -1530,9 +2000,257 @@ export const Enhance: React.FC = () => {
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 className="p-4 pt-0 space-y-4 border-t border-[var(--border-subtle,#2b2b2b)]"
               >
+                {/* Audio Extraction Panel (Automatically synced to video duration) */}
+                <div className="p-3.5 bg-[var(--bg-primary,#171717)] border border-[var(--border-subtle,#2b2b2b)] rounded-2xl space-y-3 pt-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Music className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+                      <div>
+                        <p className="text-xs font-bold text-[var(--text-primary,#F5F4F0)]">
+                          Extract Audio Track from Video
+                        </p>
+                        <p className="text-[10px] text-[var(--text-muted,#888888)]">
+                          Auto-synced to clip duration: <span className="font-tabular font-semibold text-[var(--accent,#C7F464)]">{video ? `${video.duration.toFixed(1)}s` : 'Auto'}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      type="button"
+                      onClick={() => handleExtractAudioStudio('mp3', false)}
+                      disabled={extractingAudioTrack || !video}
+                      className="h-10 px-3 rounded-xl bg-[var(--bg-surface-elevated,#262626)] hover:bg-[var(--border-strong,#333333)] border border-[var(--border-strong,#383838)] text-xs font-semibold text-[var(--text-primary,#F5F4F0)] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Download className="w-3.5 h-3.5 text-[var(--accent,#C7F464)]" />
+                      <span>{extractingAudioTrack ? 'Extracting...' : 'Download Audio (MP3)'}</span>
+                    </motion.button>
+
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      type="button"
+                      onClick={() => handleExtractAudioStudio('mp3', true)}
+                      disabled={extractingAudioTrack || !video}
+                      className="h-10 px-3 rounded-xl bg-[var(--accent-subtle,rgba(199,244,100,0.1))] hover:bg-[var(--accent-subtle,rgba(199,244,100,0.18))] border border-[var(--accent,#C7F464)] text-xs font-semibold text-[var(--accent,#C7F464)] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Set as Custom Track</span>
+                    </motion.button>
+                  </div>
+
+                  {extractedAudioInfo && (
+                    <div className="p-2.5 bg-[var(--bg-surface,#202020)] rounded-xl border border-[var(--border-subtle,#262626)] space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-[var(--text-primary,#F5F4F0)] truncate max-w-[200px]">
+                          {extractedAudioInfo.filename}
+                        </span>
+                        <span className="font-tabular text-[var(--accent,#C7F464)] font-semibold">
+                          {extractedAudioInfo.duration.toFixed(1)}s Synced
+                        </span>
+                      </div>
+                      <audio controls src={extractedAudioInfo.url} className="w-full h-8 rounded" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Import Custom Audio Track from Device */}
+                <div className="p-3.5 bg-[var(--bg-primary,#171717)] border border-[var(--border-subtle,#2b2b2b)] rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+                      <div>
+                        <p className="text-xs font-bold text-[var(--text-primary,#F5F4F0)]">
+                          Import Audio from Device
+                        </p>
+                        <p className="text-[10px] text-[var(--text-muted,#888888)]">
+                          Supports MP3, WAV, AAC, M4A, OGG · Automatically synced to video length
+                        </p>
+                      </div>
+                    </div>
+
+                    <input
+                      ref={audioInputRef}
+                      type="file"
+                      accept="audio/*,.mp3,.wav,.aac,.m4a,.ogg,.flac"
+                      onChange={handleAudioUpload}
+                      className="hidden"
+                    />
+
+                    <motion.button
+                      whileTap={{ scale: 0.96 }}
+                      type="button"
+                      onClick={() => audioInputRef.current?.click()}
+                      disabled={uploadingAudioTrack}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)] font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm hover:opacity-95"
+                    >
+                      {uploadingAudioTrack ? (
+                        <>
+                          <div className="w-3 h-3 border border-black border-t-transparent rounded-full animate-spin" />
+                          <span>Importing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3 h-3" />
+                          <span>Import Audio</span>
+                        </>
+                      )}
+                    </motion.button>
+                  </div>
+
+                  {settings.customAudioFilename ? (
+                    <div className="p-3 bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#282828)] rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Music className="w-3.5 h-3.5 text-[var(--accent,#C7F464)]" />
+                          <div>
+                            <p className="text-xs font-semibold text-[var(--text-primary,#F5F4F0)] truncate max-w-[200px]">
+                              {settings.customAudioFilename}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-muted,#888888)]">
+                              Auto-synced to video: {video ? `${video.duration.toFixed(1)}s` : 'clip'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {settings.customAudioUrl && (
+                            <>
+                              <audio
+                                ref={customAudioPlayerRef}
+                                src={settings.customAudioUrl}
+                                onEnded={() => setIsPlayingCustomAudio(false)}
+                                className="hidden"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleTogglePlayCustomAudio}
+                                className="p-1.5 rounded-lg bg-[var(--bg-surface-elevated,#282828)] hover:bg-[var(--border-strong,#333333)] text-[var(--accent,#C7F464)] cursor-pointer"
+                                title={isPlayingCustomAudio ? 'Pause Preview' : 'Play Preview'}
+                              >
+                                {isPlayingCustomAudio ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                              </button>
+                            </>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (customAudioPlayerRef.current) customAudioPlayerRef.current.pause();
+                              setIsPlayingCustomAudio(false);
+                              setSettings((p) => ({
+                                ...p,
+                                customAudioPath: undefined,
+                                customAudioUrl: undefined,
+                                customAudioFilename: undefined,
+                                customAudioAction: 'none',
+                              }));
+                              showToast('Imported audio track removed', 'info');
+                            }}
+                            className="p-1.5 rounded-lg bg-[var(--bg-surface-elevated,#282828)] hover:bg-red-500/20 text-red-400 cursor-pointer"
+                            title="Remove audio"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Action Choice: Replace vs Mix */}
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-semibold text-[var(--text-muted,#888888)]">
+                          Audio Track Integration Mode
+                        </span>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setSettings((p) => ({ ...p, customAudioAction: 'replace', preset: 'custom' }))}
+                            className={`p-2 rounded-xl text-center font-semibold cursor-pointer transition-colors ${
+                              settings.customAudioAction === 'replace'
+                                ? 'bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)]'
+                                : 'bg-[var(--bg-primary,#171717)] text-[var(--text-muted,#888888)] border border-[var(--border-subtle,#282828)]'
+                            }`}
+                          >
+                            Replace Original Audio
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSettings((p) => ({ ...p, customAudioAction: 'mix', preset: 'custom' }))}
+                            className={`p-2 rounded-xl text-center font-semibold cursor-pointer transition-colors ${
+                              settings.customAudioAction === 'mix'
+                                ? 'bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)]'
+                                : 'bg-[var(--bg-primary,#171717)] text-[var(--text-muted,#888888)] border border-[var(--border-subtle,#282828)]'
+                            }`}
+                          >
+                            Mix with Video Audio
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Volume Mix Sliders when Mix is chosen */}
+                      {settings.customAudioAction === 'mix' && (
+                        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-[var(--border-subtle,#282828)]">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-[var(--text-muted,#888888)]">Video Voice/Sound</span>
+                              <span className="font-tabular font-bold text-[var(--text-primary,#F5F4F0)]">
+                                {Math.round((settings.originalAudioVolume ?? 1.0) * 100)}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              value={settings.originalAudioVolume ?? 1.0}
+                              onChange={(e) => setSettings((p) => ({ ...p, originalAudioVolume: parseFloat(e.target.value) }))}
+                              className="w-full"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-[var(--text-muted,#888888)]">Imported Music</span>
+                              <span className="font-tabular font-bold text-[var(--text-primary,#F5F4F0)]">
+                                {Math.round((settings.customAudioVolume ?? 0.85) * 100)}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              value={settings.customAudioVolume ?? 0.85}
+                              onChange={(e) => setSettings((p) => ({ ...p, customAudioVolume: parseFloat(e.target.value) }))}
+                              className="w-full"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Auto-loop switch */}
+                      <label className="flex items-center justify-between text-xs pt-1 border-t border-[var(--border-subtle,#282828)] cursor-pointer">
+                        <span className="text-[var(--text-muted,#888888)]">Auto-loop audio if shorter than video</span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings.customAudioLoop)}
+                          onChange={(e) => setSettings((p) => ({ ...p, customAudioLoop: e.target.checked }))}
+                          className="accent-[var(--accent,#C7F464)] w-4 h-4 rounded"
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-[var(--bg-surface,#202020)] rounded-xl border border-[var(--border-subtle,#262626)] text-[11px] text-[var(--text-muted,#888888)] flex items-center gap-2">
+                      <Music className="w-4 h-4 text-[var(--accent,#C7F464)] shrink-0" />
+                      <span>No custom audio track loaded yet. Click "Import Audio" to sync device audio with this video.</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Mode Select */}
-                <div className="space-y-1.5 pt-2">
-                  <span className="text-xs text-[var(--text-muted,#888888)]">Audio Processing Mode</span>
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-xs text-[var(--text-muted,#888888)]">Audio Mastering Target</span>
                   <div className="grid grid-cols-3 gap-1.5 text-xs">
                     {[
                       { id: 'preserve', label: 'Preserve Source' },
@@ -1875,6 +2593,20 @@ export const Enhance: React.FC = () => {
           showToast(`Social Profile "${profileName}" applied!`, 'success');
         }}
       />
+
+      {video && (
+        <SocialShareModal
+          isOpen={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          title={video.filename}
+          videoUrl={video.streamUrl}
+          downloadUrl={video.streamUrl}
+          resolution={settings.targetResolution.toUpperCase()}
+          fps={settings.targetFps === 'preserve' ? video.fps : settings.targetFps}
+          codec={settings.codec.toUpperCase()}
+          duration={video.duration}
+        />
+      )}
 
       <BottomNav />
     </motion.div>

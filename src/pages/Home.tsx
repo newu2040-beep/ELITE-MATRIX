@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { VideoMetadata, JobRecord, ProjectRecord } from '../types/video';
 import { useDeviceCapabilities } from '../lib/deviceCapabilities';
+import { inspectVideoFileClient, buildClientFallbackMetadata } from '../lib/clientVideoInspect';
 import {
   Upload,
   Film,
@@ -88,8 +89,16 @@ export const Home: React.FC = () => {
     setUploading(true);
     setUploadError(null);
 
+    const inspected = await inspectVideoFileClient(file);
+
     const formData = new FormData();
     formData.append('video', file);
+    formData.append('width', String(inspected.width));
+    formData.append('height', String(inspected.height));
+    formData.append('duration', String(inspected.duration));
+    if (inspected.thumbnailDataUrl) {
+      formData.append('thumbnailDataUrl', inspected.thumbnailDataUrl);
+    }
 
     try {
       const res = await fetch('/api/upload', {
@@ -103,13 +112,19 @@ export const Home: React.FC = () => {
       }
 
       const data = await res.json();
-      sessionStorage.setItem('elitematrix_active_video', JSON.stringify(data.metadata));
+      const metadata: VideoMetadata = {
+        ...data.metadata,
+        thumbnailUrl: data.metadata.thumbnailUrl || inspected.thumbnailDataUrl,
+      };
+      sessionStorage.setItem('elitematrix_active_video', JSON.stringify(metadata));
       showToast('Footage inspected & loaded into Studio', 'success');
       navigate('/enhance');
     } catch (err: unknown) {
-      const msg = (err as Error).message;
-      setUploadError(msg);
-      showToast(msg, 'error');
+      console.warn('Server upload/inspection failed, using client-side HTML5 inspection fallback:', err);
+      const fallbackMetadata = buildClientFallbackMetadata(file, inspected);
+      sessionStorage.setItem('elitematrix_active_video', JSON.stringify(fallbackMetadata));
+      showToast('Loaded into Studio via browser media engine', 'info');
+      navigate('/enhance');
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

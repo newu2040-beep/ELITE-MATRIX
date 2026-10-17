@@ -16,9 +16,11 @@ import {
   Zap,
   Bell,
   BellRing,
+  Share2,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { motion, AnimatePresence } from 'motion/react';
+import { SocialShareModal } from '../components/SocialShareModal';
 import {
   sendCompleteNotification,
   getNotificationStatus,
@@ -36,6 +38,7 @@ export const JobProgress: React.FC = () => {
   const [retrying, setRetrying] = useState(false);
   const [notifiedComplete, setNotifiedComplete] = useState(false);
   const [notifState, setNotifState] = useState(getNotificationStatus());
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   useEffect(() => {
     if (!jobId) return;
@@ -231,14 +234,25 @@ export const JobProgress: React.FC = () => {
           {/* Action CTAs with Tactile Feedback */}
           <div className="space-y-2 pt-2">
             {isFinished && job.exportId && (
-              <motion.button
-                whileTap={{ scale: 0.98 }}
-                onClick={() => navigate(`/exports/${job.exportId}`)}
-                className="w-full h-12 rounded-xl bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)] font-bold text-sm flex items-center justify-center gap-2 hover:opacity-95 shadow-lg shadow-[var(--accent-glow,rgba(199,244,100,0.2))] transition-all cursor-pointer"
-              >
-                <span>View Master Video & Full Telemetry</span>
-                <ArrowRight className="w-4 h-4 stroke-[2.4]" />
-              </motion.button>
+              <>
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShareModalOpen(true)}
+                  className="w-full h-12 rounded-xl bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)] font-bold text-sm flex items-center justify-center gap-2 hover:opacity-95 shadow-lg shadow-[var(--accent-glow,rgba(199,244,100,0.25))] transition-all cursor-pointer"
+                >
+                  <Share2 className="w-4 h-4 stroke-[2.4]" />
+                  <span>Direct Share to TikTok, Reels & Shorts</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => navigate(`/exports/${job.exportId}`)}
+                  className="w-full h-11 rounded-xl bg-[var(--bg-surface-elevated,#2a2a2a)] hover:bg-[var(--border-strong,#3a3a3a)] border border-[var(--border-strong,#383838)] text-[var(--text-primary,#F5F4F0)] font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span>View Master Video & Full Telemetry</span>
+                  <ArrowRight className="w-4 h-4 stroke-[2]" />
+                </motion.button>
+              </>
             )}
 
             {isProcessing && (
@@ -326,6 +340,20 @@ export const JobProgress: React.FC = () => {
           </div>
         </section>
       </main>
+
+      {isFinished && job.exportId && (
+        <SocialShareModal
+          isOpen={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          title={job.sourceVideo.filename}
+          videoUrl={`/api/stream/${job.exportId}`}
+          downloadUrl={`/api/download/${job.exportId}`}
+          resolution={job.settings.targetResolution.toUpperCase()}
+          fps={job.settings.targetFps === 'preserve' ? job.sourceVideo.fps : job.settings.targetFps}
+          codec={job.settings.codec.toUpperCase()}
+          duration={job.sourceVideo.duration}
+        />
+      )}
 
       <BottomNav />
     </motion.div>

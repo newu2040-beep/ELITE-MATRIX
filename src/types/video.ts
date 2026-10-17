@@ -40,6 +40,21 @@ export type LutPresetType =
   | 'monochrome_silver'
   | 'matrix_code'
   | 'cinestill_800t'
+  | 'vhs_retro'
+  | 'technicolor_3strip'
+  | 'film_noir_35mm'
+  | 'sunset_boulevard'
+  | 'arctic_glacier'
+  | 'champagne_rose'
+  | 'moody_emerald'
+  | 'vivid_social'
+  | 'kodak_portra_400'
+  | 'provia_100f'
+  | 'cinematic_teal_shadow'
+  | 'pastel_sakura_bloom'
+  | 'clean_contrast'
+  | 'bleach_gritty'
+  | 'arctic_ice'
   | 'custom';
 
 export type SocialProfileType =
@@ -61,7 +76,7 @@ export interface EnhancementSettings {
   targetFps: 'preserve' | 24 | 25 | 30 | 50 | 60 | 90 | 120 | 'custom';
   customFps?: number;
   motionInterpolation: boolean;
-  interpolationMode: 'motion_compensated' | 'blend' | 'standard';
+  interpolationMode: 'optical_flow' | 'motion_compensated' | 'blend' | 'standard';
   denoiseLevel: number; // 0 to 10
   sharpenLevel: number; // 0 to 10
   // Color Grading Tools (Real-time live preview)
@@ -97,7 +112,7 @@ export interface EnhancementSettings {
   trimStart?: number; // in seconds
   trimEnd?: number; // in seconds
   splitPoint?: number; // in seconds
-  // Audio Mastering & High Quality Formats
+  // Audio Mastering & Custom Audio Tracks
   audioMode: 'preserve' | 'transcode' | 'remove';
   audioCodec: 'aac' | 'opus' | 'pcm';
   audioBitrateKbps: number;
@@ -107,6 +122,14 @@ export interface EnhancementSettings {
   audioVocalBoost?: boolean; // Dialogue clarity
   audioBassPunch?: boolean; // Low-end warmth
   audioDeHum?: boolean; // 80Hz rumble cut
+  // Imported Custom Audio Track (Synced automatically to video duration)
+  customAudioPath?: string;
+  customAudioUrl?: string;
+  customAudioFilename?: string;
+  customAudioAction?: 'replace' | 'mix' | 'none';
+  customAudioLoop?: boolean;
+  customAudioVolume?: number; // 0 to 1
+  originalAudioVolume?: number; // 0 to 1
 }
 
 export type JobStatus = 'uploading' | 'queued' | 'processing' | 'finalizing' | 'completed' | 'failed' | 'cancelled';

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { PWAInstallButton } from '../components/PWAInstallButton';
 import { sendCompleteNotification, requestNotificationPermission } from '../lib/notifications';
+import { getBasicDefaultPreferences, saveBasicDefaultPreferences } from '../lib/defaultPreferences';
 
 export const Settings: React.FC = () => {
   const { user, signInWithGoogle, signOutUser } = useAuth();
@@ -36,15 +37,10 @@ export const Settings: React.FC = () => {
   const deviceCaps = useDeviceCapabilities();
 
   // Export default preferences state
-  const [defaultResolution, setDefaultResolution] = useState(() => {
-    return localStorage.getItem('elitematrix_pref_resolution') || '4k';
-  });
-  const [defaultFps, setDefaultFps] = useState(() => {
-    return localStorage.getItem('elitematrix_pref_fps') || '60';
-  });
-  const [defaultCodec, setDefaultCodec] = useState(() => {
-    return localStorage.getItem('elitematrix_pref_codec') || 'hevc';
-  });
+  const initialPrefs = getBasicDefaultPreferences();
+  const [defaultResolution, setDefaultResolution] = useState(initialPrefs.resolution);
+  const [defaultFps, setDefaultFps] = useState(initialPrefs.fps);
+  const [defaultCodec, setDefaultCodec] = useState(initialPrefs.codec);
   const [prefSaved, setPrefSaved] = useState(false);
 
   // Custom Gemini API Key state
@@ -58,11 +54,13 @@ export const Settings: React.FC = () => {
   const [termsOpen, setTermsOpen] = useState(false);
 
   const handleSavePreferences = () => {
-    localStorage.setItem('elitematrix_pref_resolution', defaultResolution);
-    localStorage.setItem('elitematrix_pref_fps', defaultFps);
-    localStorage.setItem('elitematrix_pref_codec', defaultCodec);
+    saveBasicDefaultPreferences({
+      resolution: defaultResolution as any,
+      fps: defaultFps,
+      codec: defaultCodec as any,
+    });
     setPrefSaved(true);
-    showToast('Default export preferences saved', 'success');
+    showToast(`Default preferences saved (${defaultResolution.toUpperCase()} · ${defaultFps === 'preserve' ? 'Original FPS' : `${defaultFps} FPS`} · ${defaultCodec.toUpperCase()})`, 'success');
     setTimeout(() => setPrefSaved(false), 2000);
   };
 
@@ -272,13 +270,14 @@ export const Settings: React.FC = () => {
               <span className="text-[var(--text-muted,#888888)]">Default Target Resolution</span>
               <select
                 value={defaultResolution}
-                onChange={(e) => setDefaultResolution(e.target.value)}
+                onChange={(e) => setDefaultResolution(e.target.value as any)}
                 className="bg-[var(--bg-primary,#171717)] border border-[var(--border-subtle,#2f2f2f)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary,#F5F4F0)]"
               >
                 <option value="4k">4K UHD (3840×2160)</option>
                 <option value="1440p">1440p QHD</option>
                 <option value="1080p">1080p FHD</option>
                 <option value="720p">720p HD</option>
+                <option value="original">Original Resolution</option>
               </select>
             </div>
 
@@ -302,7 +301,7 @@ export const Settings: React.FC = () => {
               <span className="text-[var(--text-muted,#888888)]">Default Master Codec</span>
               <select
                 value={defaultCodec}
-                onChange={(e) => setDefaultCodec(e.target.value)}
+                onChange={(e) => setDefaultCodec(e.target.value as any)}
                 className="bg-[var(--bg-primary,#171717)] border border-[var(--border-subtle,#2f2f2f)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary,#F5F4F0)]"
               >
                 <option value="prores">Apple ProRes 422 HQ Master (.mov)</option>

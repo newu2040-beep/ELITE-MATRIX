@@ -1,6 +1,24 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-export type PastelPalette = 'titanium' | 'blush' | 'sage' | 'lavender' | 'sky' | 'dune';
+export type PastelPalette =
+  | 'titanium'
+  | 'blush'
+  | 'sage'
+  | 'lavender'
+  | 'sky'
+  | 'dune'
+  | 'matcha'
+  | 'sorbet'
+  | 'lilac'
+  | 'glacier'
+  | 'champagne'
+  | 'sakura'
+  | 'obsidian_gold'
+  | 'electric_cyan'
+  | 'buttercup'
+  | 'mint_creme'
+  | 'bold_crimson'
+  | 'neo_brutalist';
 export type ColorMode = 'dark' | 'light';
 
 export interface ThemeConfig {
@@ -22,6 +40,22 @@ export const PASTEL_THEMES: ThemeConfig[] = [
     previewAccent: '#C7F464',
   },
   {
+    id: 'obsidian_gold',
+    name: 'Obsidian Gold',
+    subtitle: 'Ultra-Luxury 24K Gold & Velvet Noir',
+    accentColor: '#F59E0B',
+    previewBg: '#141416',
+    previewAccent: '#F59E0B',
+  },
+  {
+    id: 'electric_cyan',
+    name: 'Neo-Tokyo Cyan',
+    subtitle: 'High-Voltage Electric Cyberpunk',
+    accentColor: '#00F0FF',
+    previewBg: '#0A0E17',
+    previewAccent: '#00F0FF',
+  },
+  {
     id: 'blush',
     name: 'Blush Rose',
     subtitle: 'Soft Rose Quartz & Luminous Tint',
@@ -32,10 +66,42 @@ export const PASTEL_THEMES: ThemeConfig[] = [
   {
     id: 'sage',
     name: 'Sage Mint',
-    subtitle: 'Calming Eucalyptus & Matcha Glow',
+    subtitle: 'Calming Eucalyptus & Green Glow',
     accentColor: '#34D399',
     previewBg: '#19221C',
     previewAccent: '#34D399',
+  },
+  {
+    id: 'buttercup',
+    name: 'Pastel Buttercup',
+    subtitle: 'Warm Custard Cream & Sunny Apricot',
+    accentColor: '#FCD34D',
+    previewBg: '#231F14',
+    previewAccent: '#FCD34D',
+  },
+  {
+    id: 'mint_creme',
+    name: 'Pistachio Chiffon',
+    subtitle: 'Fresh Mint Leaf & Matcha Glow',
+    accentColor: '#6EE7B7',
+    previewBg: '#13221C',
+    previewAccent: '#6EE7B7',
+  },
+  {
+    id: 'bold_crimson',
+    name: 'Cyber Crimson',
+    subtitle: 'High Contrast Carbon & Ruby Glow',
+    accentColor: '#FF1E56',
+    previewBg: '#180D11',
+    previewAccent: '#FF1E56',
+  },
+  {
+    id: 'neo_brutalist',
+    name: 'Neo Brutalist',
+    subtitle: 'Vivid Acid Lime & Stark Ink Noir',
+    accentColor: '#D4FF00',
+    previewBg: '#0D0D0D',
+    previewAccent: '#D4FF00',
   },
   {
     id: 'lavender',
@@ -60,6 +126,54 @@ export const PASTEL_THEMES: ThemeConfig[] = [
     accentColor: '#FBBF24',
     previewBg: '#26201B',
     previewAccent: '#FBBF24',
+  },
+  {
+    id: 'matcha',
+    name: 'Matcha Zen',
+    subtitle: 'Japanese Ceremonial Green',
+    accentColor: '#84CC16',
+    previewBg: '#1C2114',
+    previewAccent: '#84CC16',
+  },
+  {
+    id: 'sorbet',
+    name: 'Peach Sorbet',
+    subtitle: 'Warm Pastel Sunset Coral',
+    accentColor: '#FB923C',
+    previewBg: '#261C18',
+    previewAccent: '#FB923C',
+  },
+  {
+    id: 'lilac',
+    name: 'Cosmic Lilac',
+    subtitle: 'Iridescent Violet Bloom',
+    accentColor: '#C084FC',
+    previewBg: '#21182B',
+    previewAccent: '#C084FC',
+  },
+  {
+    id: 'glacier',
+    name: 'Glacier Cyan',
+    subtitle: 'Arctic Teal & Diamond Ice',
+    accentColor: '#2DD4BF',
+    previewBg: '#142223',
+    previewAccent: '#2DD4BF',
+  },
+  {
+    id: 'champagne',
+    name: 'Champagne Gold',
+    subtitle: 'Luxury Editorial Platinum',
+    accentColor: '#E2E8F0',
+    previewBg: '#1E1E22',
+    previewAccent: '#F1F5F9',
+  },
+  {
+    id: 'sakura',
+    name: 'Sakura Petal',
+    subtitle: 'Tokyo Cherry Blossom Soft Pink',
+    accentColor: '#F472B6',
+    previewBg: '#261A22',
+    previewAccent: '#F472B6',
   },
 ];
 

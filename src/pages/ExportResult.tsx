@@ -21,9 +21,12 @@ import {
   Palette,
   Maximize2,
   Trash2,
+  Volume2,
+  Smartphone,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { motion, AnimatePresence } from 'motion/react';
+import { SocialShareModal } from '../components/SocialShareModal';
 
 export const ExportResult: React.FC = () => {
   const { exportId } = useParams<{ exportId: string }>();
@@ -39,6 +42,8 @@ export const ExportResult: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [socialModalOpen, setSocialModalOpen] = useState(false);
+  const [extractingAudio, setExtractingAudio] = useState(false);
 
   const handleDeleteExport = async () => {
     if (!exportData) return;
@@ -158,6 +163,37 @@ export const ExportResult: React.FC = () => {
     setCopied(true);
     showToast('Share link copied to clipboard', 'success');
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleExtractAudio = async () => {
+    if (!exportData) return;
+    setExtractingAudio(true);
+    try {
+      const res = await fetch('/api/audio/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: exportData.outputMetadata.filePath,
+          videoId: exportData.exportId,
+          format: 'mp3',
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to extract audio track');
+      }
+      const data = await res.json();
+      showToast('Audio track extracted as MP3!', 'success');
+      const a = document.createElement('a');
+      a.href = data.audioUrl;
+      a.download = data.filename || `audio_${exportData.exportId}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err: unknown) {
+      showToast((err as Error).message || 'Audio extraction failed', 'error');
+    } finally {
+      setExtractingAudio(false);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -330,15 +366,37 @@ export const ExportResult: React.FC = () => {
 
         {/* Primary Action Buttons with Tactile Motion Feedback */}
         <section className="space-y-2.5">
-          {/* Download Video */}
+          {/* Direct Share to Social Media (TikTok, Reels, Shorts) */}
           <motion.button
             whileTap={{ scale: 0.98 }}
-            onClick={handleDownload}
-            className="w-full h-12 rounded-xl bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)] font-bold text-sm flex items-center justify-center gap-2 hover:opacity-95 shadow-lg shadow-[var(--accent-glow,rgba(199,244,100,0.2))] transition-all cursor-pointer"
+            onClick={() => setSocialModalOpen(true)}
+            className="w-full h-12 rounded-xl bg-[var(--accent,#C7F464)] text-[var(--accent-text,#121808)] font-bold text-sm flex items-center justify-center gap-2 hover:opacity-95 shadow-lg shadow-[var(--accent-glow,rgba(199,244,100,0.25))] transition-all cursor-pointer"
           >
-            <Download className="w-4 h-4 stroke-[2.4]" />
-            <span>Download Master ({formatFileSize(meta.fileSize)})</span>
+            <Share2 className="w-4 h-4 stroke-[2.4]" />
+            <span>Direct Share to TikTok, Reels & Shorts</span>
           </motion.button>
+
+          {/* Download Video & Extract Audio */}
+          <div className="grid grid-cols-2 gap-2">
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={handleDownload}
+              className="h-11 rounded-xl bg-[var(--bg-surface-elevated,#2a2a2a)] border border-[var(--border-strong,#383838)] hover:border-[var(--accent,#C7F464)] text-[var(--text-primary,#F5F4F0)] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+              <span>Download Video</span>
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={handleExtractAudio}
+              disabled={extractingAudio}
+              className="h-11 rounded-xl bg-[var(--bg-surface-elevated,#2a2a2a)] border border-[var(--border-strong,#383838)] hover:border-[var(--accent,#C7F464)] text-[var(--text-primary,#F5F4F0)] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Volume2 className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+              <span>{extractingAudio ? 'Extracting...' : 'Extract Audio (MP3)'}</span>
+            </motion.button>
+          </div>
 
           {/* Share Link & Native Share Sheet */}
           <div className="grid grid-cols-2 gap-2">
@@ -349,7 +407,7 @@ export const ExportResult: React.FC = () => {
               className="h-11 rounded-xl bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#2f2f2f)] hover:border-[var(--accent,#C7F464)] text-xs font-semibold text-[var(--text-primary,#F5F4F0)] flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <Share2 className="w-4 h-4 text-[var(--accent,#C7F464)]" />
-              <span>Share Master</span>
+              <span>Native Phone Share</span>
             </motion.button>
 
             <motion.button
@@ -462,6 +520,18 @@ export const ExportResult: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <SocialShareModal
+        isOpen={socialModalOpen}
+        onClose={() => setSocialModalOpen(false)}
+        title={meta.filename}
+        videoUrl={exportData.streamUrl}
+        downloadUrl={exportData.downloadUrl}
+        resolution={`${meta.width}×${meta.height}`}
+        fps={meta.fps}
+        codec={meta.videoCodec.toUpperCase()}
+        duration={meta.duration}
+      />
 
       <BottomNav />
     </motion.div>

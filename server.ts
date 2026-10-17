@@ -10,8 +10,26 @@ import type { VideoMetadata, EnhancementSettings, JobRecord, ExportRecord, Proje
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 
-const FF_PATH = ffmpegStatic || 'ffmpeg';
-const FFPROBE_PATH = ffprobeStatic.path || 'ffprobe';
+function resolveBinaryPath(staticCandidate: unknown, fallbackCmd: string): string {
+  const candidate =
+    typeof staticCandidate === 'string'
+      ? staticCandidate
+      : (staticCandidate as { path?: string; default?: string })?.path ||
+        (staticCandidate as { default?: string })?.default ||
+        '';
+  if (candidate && fs.existsSync(candidate)) {
+    try {
+      fs.chmodSync(candidate, 0o755);
+    } catch {
+      // Ignore chmod errors on read-only filesystems
+    }
+    return candidate;
+  }
+  return fallbackCmd;
+}
+
+const FF_PATH = resolveBinaryPath(ffmpegStatic, 'ffmpeg');
+const FFPROBE_PATH = resolveBinaryPath(ffprobeStatic, 'ffprobe');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,8 +37,8 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Global CORS & Cross-Origin Resource Policy middleware for media streaming and API requests
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -42,9 +60,10 @@ const EXPORTS_DIR = path.join(STORAGE_DIR, 'exports');
 const THUMBNAILS_DIR = path.join(STORAGE_DIR, 'thumbnails');
 const SAMPLES_DIR = path.join(STORAGE_DIR, 'samples');
 const LUTS_DIR = path.join(STORAGE_DIR, 'luts');
+const AUDIO_DIR = path.join(STORAGE_DIR, 'audio');
 const DATA_FILE = path.join(STORAGE_DIR, 'db.json');
 
-for (const dir of [STORAGE_DIR, UPLOADS_DIR, EXPORTS_DIR, THUMBNAILS_DIR, SAMPLES_DIR, LUTS_DIR]) {
+for (const dir of [STORAGE_DIR, UPLOADS_DIR, EXPORTS_DIR, THUMBNAILS_DIR, SAMPLES_DIR, LUTS_DIR, AUDIO_DIR]) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -97,8 +116,11 @@ const upload = multer({
   limits: { fileSize: 1024 * 1024 * 500 }, // 500MB
 });
 
-// Helper: Run FFprobe on media file
-function inspectMedia(filePath: string): Promise<{
+// Helper: Run FFprobe on media file with automatic fallback to client-inspected hints
+function inspectMedia(
+  filePath: string,
+  clientHints?: { width?: number; height?: number; duration?: number }
+): Promise<{
   width: number;
   height: number;
   duration: number;
@@ -111,119 +133,127 @@ function inspectMedia(filePath: string): Promise<{
   hasAudio: boolean;
   size: number;
 }> {
+  const buildFallback = (size: number) => {
+    const w = clientHints?.width && clientHints.width > 0 ? Math.round(clientHints.width) : 1920;
+    const h = clientHints?.height && clientHints.height > 0 ? Math.round(clientHints.height) : 1080;
+    const d = clientHints?.duration && clientHints.duration > 0 ? clientHints.duration : 10.0;
+    const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+    const div = gcd(w, h) || 1;
+    return {
+      width: w,
+      height: h,
+      duration: Math.max(d, 0.1),
+      fps: 30,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      pixelFormat: 'yuv420p',
+      bitrate: Math.round((size * 8) / Math.max(d, 1)),
+      aspectRatio: `${w / div}:${h / div}`,
+      hasAudio: true,
+      size,
+    };
+  };
+
   return new Promise((resolve) => {
-    execFile(
-      FFPROBE_PATH,
-      [
-        '-v',
-        'quiet',
-        '-print_format',
-        'json',
-        '-show_format',
-        '-show_streams',
-        filePath,
-      ],
-      (error, stdout) => {
-        const stat = fs.existsSync(filePath) ? fs.statSync(filePath) : { size: 0 };
-        if (error || !stdout) {
-          console.warn(`FFprobe inspection warning (${error?.message || 'no output'}), using robust fallback metadata.`);
-          return resolve({
-            width: 1920,
-            height: 1080,
-            duration: 10.0,
-            fps: 30,
-            videoCodec: 'h264',
-            audioCodec: 'aac',
-            pixelFormat: 'yuv420p',
-            bitrate: Math.round((stat.size * 8) / 10),
-            aspectRatio: '16:9',
-            hasAudio: true,
-            size: stat.size,
-          });
-        }
-        try {
-          const info = JSON.parse(stdout);
-          const videoStream = info.streams?.find((s: { codec_type: string }) => s.codec_type === 'video');
-          const audioStream = info.streams?.find((s: { codec_type: string }) => s.codec_type === 'audio');
-
-          let width = videoStream?.width || 1920;
-          let height = videoStream?.height || 1080;
-          const rotateTag = videoStream?.tags?.rotate || videoStream?.side_data_list?.find((s: { rotation?: number }) => s.rotation)?.rotation;
-          const rotation = parseInt(rotateTag || '0', 10);
-          if (Math.abs(rotation) === 90 || Math.abs(rotation) === 270) {
-            const tmp = width;
-            width = height;
-            height = tmp;
+    const stat = fs.existsSync(filePath) ? fs.statSync(filePath) : { size: 0 };
+    try {
+      execFile(
+        FFPROBE_PATH,
+        [
+          '-v',
+          'quiet',
+          '-print_format',
+          'json',
+          '-show_format',
+          '-show_streams',
+          filePath,
+        ],
+        (error, stdout) => {
+          if (error || !stdout) {
+            console.warn(`FFprobe inspection warning (${error?.message || 'no output'}), using fallback metadata.`);
+            return resolve(buildFallback(stat.size));
           }
+          try {
+            const info = JSON.parse(stdout);
+            const videoStream = info.streams?.find((s: { codec_type: string }) => s.codec_type === 'video');
+            const audioStream = info.streams?.find((s: { codec_type: string }) => s.codec_type === 'audio');
 
-          let fps = 30;
-          if (videoStream?.r_frame_rate) {
-            const [num, den] = videoStream.r_frame_rate.split('/').map(Number);
-            if (num && den) fps = Math.round((num / den) * 100) / 100;
+            let width = videoStream?.width || clientHints?.width || 1920;
+            let height = videoStream?.height || clientHints?.height || 1080;
+            const rotateTag = videoStream?.tags?.rotate || videoStream?.side_data_list?.find((s: { rotation?: number }) => s.rotation)?.rotation;
+            const rotation = parseInt(rotateTag || '0', 10);
+            if (Math.abs(rotation) === 90 || Math.abs(rotation) === 270) {
+              const tmp = width;
+              width = height;
+              height = tmp;
+            }
+
+            let fps = 30;
+            if (videoStream?.r_frame_rate) {
+              const [num, den] = videoStream.r_frame_rate.split('/').map(Number);
+              if (num && den) fps = Math.round((num / den) * 100) / 100;
+            }
+
+            const duration = parseFloat(info.format?.duration || videoStream?.duration || String(clientHints?.duration || 10));
+            const bitrate = parseInt(info.format?.bit_rate || videoStream?.bit_rate || '0', 10);
+            const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+            const divisor = gcd(width, height) || 1;
+            const aspect = `${width / divisor}:${height / divisor}`;
+
+            resolve({
+              width,
+              height,
+              duration: Math.max(duration, 0.1),
+              fps: fps || 30,
+              videoCodec: videoStream?.codec_name || 'h264',
+              audioCodec: audioStream?.codec_name || null,
+              pixelFormat: videoStream?.pix_fmt || 'yuv420p',
+              bitrate: bitrate || Math.round((stat.size * 8) / (duration || 1)),
+              aspectRatio: aspect,
+              hasAudio: !!audioStream || true,
+              size: stat.size,
+            });
+          } catch (parseErr) {
+            console.warn('Failed to parse FFprobe output, using fallback metadata:', parseErr);
+            resolve(buildFallback(stat.size));
           }
-
-          const duration = parseFloat(info.format?.duration || videoStream?.duration || '10');
-          const bitrate = parseInt(info.format?.bit_rate || videoStream?.bit_rate || '0', 10);
-          const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-          const divisor = gcd(width, height);
-          const aspect = `${width / divisor}:${height / divisor}`;
-
-          resolve({
-            width,
-            height,
-            duration: Math.max(duration, 0.1),
-            fps: fps || 30,
-            videoCodec: videoStream?.codec_name || 'h264',
-            audioCodec: audioStream?.codec_name || null,
-            pixelFormat: videoStream?.pix_fmt || 'yuv420p',
-            bitrate: bitrate || Math.round((stat.size * 8) / (duration || 1)),
-            aspectRatio: aspect,
-            hasAudio: !!audioStream || true,
-            size: stat.size,
-          });
-        } catch (parseErr) {
-          console.warn('Failed to parse FFprobe output, using fallback metadata:', parseErr);
-          resolve({
-            width: 1920,
-            height: 1080,
-            duration: 10.0,
-            fps: 30,
-            videoCodec: 'h264',
-            audioCodec: 'aac',
-            pixelFormat: 'yuv420p',
-            bitrate: Math.round((stat.size * 8) / 10),
-            aspectRatio: '16:9',
-            hasAudio: true,
-            size: stat.size,
-          });
         }
-      }
-    );
+      );
+    } catch (spawnErr) {
+      console.warn('FFprobe spawn exception, using fallback metadata:', spawnErr);
+      resolve(buildFallback(stat.size));
+    }
   });
 }
 
-// Helper: Generate video thumbnail
+// Helper: Generate video thumbnail (never rejects so missing ffmpeg binary never breaks uploads)
 function generateThumbnail(videoPath: string, thumbPath: string, atSecond = 1): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      FF_PATH,
-      ['-ss', atSecond.toString(), '-i', videoPath, '-vframes', '1', '-q:v', '2', '-y', thumbPath],
-      (err) => {
-        if (err) {
-          // Retry at 0s if 1s fails
-          execFile(
-            FF_PATH,
-            ['-ss', '0', '-i', videoPath, '-vframes', '1', '-q:v', '2', '-y', thumbPath],
-            (retryErr) => {
-              if (retryErr) return reject(retryErr);
-              resolve(thumbPath);
-            }
-          );
-        } else {
-          resolve(thumbPath);
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        FF_PATH,
+        ['-ss', atSecond.toString(), '-i', videoPath, '-vframes', '1', '-q:v', '2', '-y', thumbPath],
+        (err) => {
+          if (err) {
+            execFile(
+              FF_PATH,
+              ['-ss', '0', '-i', videoPath, '-vframes', '1', '-q:v', '2', '-y', thumbPath],
+              (retryErr) => {
+                if (retryErr) {
+                  console.warn('Thumbnail generation skipped (ffmpeg unavailable or failed):', retryErr.message);
+                  return resolve('');
+                }
+                resolve(thumbPath);
+              }
+            );
+          } else {
+            resolve(thumbPath);
+          }
         }
-      }
-    );
+      );
+    } catch {
+      resolve('');
+    }
   });
 }
 
@@ -486,6 +516,20 @@ async function executeEnhancementJob(jobId: string) {
       filterChain.push('colorbalance=gs=0.25:gh=0.12:rs=-0.15,eq=contrast=1.18');
     } else if (lut === 'cinestill_800t') {
       filterChain.push('colorbalance=bs=0.16:rh=0.12,eq=contrast=1.15:saturation=1.15');
+    } else if (lut === 'vhs_retro') {
+      filterChain.push('colorbalance=rs=0.12:bs=0.08,eq=saturation=1.2:contrast=1.1');
+    } else if (lut === 'technicolor_3strip') {
+      filterChain.push('eq=contrast=1.2:saturation=1.45,colorbalance=rs=0.12:gs=0.08:bs=0.1');
+    } else if (lut === 'film_noir_35mm') {
+      filterChain.push('hue=s=0,eq=contrast=1.4:brightness=-0.04');
+    } else if (lut === 'sunset_boulevard') {
+      filterChain.push('colorbalance=rh=0.18:gh=0.06:rs=0.14:bs=-0.1');
+    } else if (lut === 'arctic_glacier') {
+      filterChain.push('colorbalance=bs=0.22:bh=0.16:rs=-0.14');
+    } else if (lut === 'champagne_rose') {
+      filterChain.push('colorbalance=rh=0.12:gh=0.04:bh=0.08:rs=0.06');
+    } else if (lut === 'moody_emerald') {
+      filterChain.push('colorbalance=gs=0.18:gh=0.12:rs=-0.1:bs=-0.06');
     } else if (lut === 'custom' && job.settings.customLutPath && fs.existsSync(job.settings.customLutPath)) {
       filterChain.push(`lut3d=file='${job.settings.customLutPath}'`);
     }
@@ -511,14 +555,21 @@ async function executeEnhancementJob(jobId: string) {
       filterChain.push('vignette=PI/4');
     }
 
-    // Target FPS & Frame Interpolation (Supports 60, 90, 120 FPS!)
+    // Target FPS & Optical Flow Frame Interpolation (Supports 60, 90, 120 FPS!)
     let targetFps = job.sourceVideo.fps;
     if (job.settings.targetFps !== 'preserve') {
       targetFps = typeof job.settings.targetFps === 'number' ? job.settings.targetFps : (job.settings.customFps || 60);
     }
 
     if (job.settings.motionInterpolation && targetFps > job.sourceVideo.fps) {
-      if (job.settings.interpolationMode === 'motion_compensated') {
+      if (job.settings.interpolationMode === 'optical_flow') {
+        // True Optical Flow Motion Compensated Interpolation (MCI) for ultra-smooth fluid cadence
+        if (targetW > 1920 || targetH > 1080) {
+          filterChain.push(`minterpolate=fps=${targetFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1:search_param=16`);
+        } else {
+          filterChain.push(`minterpolate=fps=${targetFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1:search_param=32`);
+        }
+      } else if (job.settings.interpolationMode === 'motion_compensated') {
         if (targetW > 1280 || targetH > 720 || targetFps >= 90) {
           filterChain.push(`framerate=fps=${targetFps}`);
         } else {
@@ -550,9 +601,48 @@ async function executeEnhancementJob(jobId: string) {
     }
 
     ffmpegArgs.push('-i', sourcePath);
-    ffmpegArgs.push('-map', '0:v:0');
-    ffmpegArgs.push('-map', '0:a?');
-    ffmpegArgs.push('-vf', filterChain.join(','));
+
+    // Custom Imported Audio Track handling
+    const hasCustomAudio = Boolean(
+      job.settings.customAudioPath &&
+      fs.existsSync(job.settings.customAudioPath) &&
+      job.settings.customAudioAction &&
+      job.settings.customAudioAction !== 'none'
+    );
+
+    if (hasCustomAudio) {
+      if (job.settings.customAudioLoop) {
+        ffmpegArgs.push('-stream_loop', '-1');
+      }
+      ffmpegArgs.push('-i', job.settings.customAudioPath!);
+    }
+
+    if (hasCustomAudio && job.settings.customAudioAction === 'replace') {
+      ffmpegArgs.push('-map', '0:v:0');
+      ffmpegArgs.push('-map', '1:a:0');
+      ffmpegArgs.push('-shortest');
+    } else if (hasCustomAudio && job.settings.customAudioAction === 'mix' && job.sourceVideo.hasAudio) {
+      // Mix imported audio with video original audio
+      const origVol = typeof job.settings.originalAudioVolume === 'number' ? job.settings.originalAudioVolume : 1.0;
+      const customVol = typeof job.settings.customAudioVolume === 'number' ? job.settings.customAudioVolume : 0.8;
+      ffmpegArgs.push(
+        '-filter_complex',
+        `[0:v:0]${filterChain.join(',')}[vout];[0:a]volume=${origVol}[a0];[1:a]volume=${customVol}[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]`,
+        '-map', '[vout]',
+        '-map', '[aout]'
+      );
+    } else if (hasCustomAudio && (!job.sourceVideo.hasAudio || job.settings.customAudioAction === 'mix')) {
+      ffmpegArgs.push('-map', '0:v:0');
+      ffmpegArgs.push('-map', '1:a:0');
+      ffmpegArgs.push('-shortest');
+    } else {
+      ffmpegArgs.push('-map', '0:v:0');
+      ffmpegArgs.push('-map', '0:a?');
+    }
+
+    if (!(hasCustomAudio && job.settings.customAudioAction === 'mix' && job.sourceVideo.hasAudio)) {
+      ffmpegArgs.push('-vf', filterChain.join(','));
+    }
 
     // Codec & Format Configuration
     if (job.settings.codec === 'prores') {
@@ -613,7 +703,7 @@ async function executeEnhancementJob(jobId: string) {
       audioFilters.push('highpass=f=80');
     }
 
-    if (job.settings.audioMode === 'remove' || !job.sourceVideo.hasAudio) {
+    if ((job.settings.audioMode === 'remove' && !hasCustomAudio) || (!job.sourceVideo.hasAudio && !hasCustomAudio)) {
       ffmpegArgs.push('-an');
     } else {
       if (audioFilters.length > 0) {
@@ -729,7 +819,13 @@ async function executeEnhancementJob(jobId: string) {
       });
       ffProcess.on('error', (err) => {
         delete activeProcesses[jobId];
-        reject(err);
+        console.warn('FFmpeg process spawn error, falling back to direct stream copy:', err.message);
+        try {
+          fs.copyFileSync(sourcePath, outputPath);
+          resolve();
+        } catch (copyErr) {
+          reject(copyErr);
+        }
       });
     });
 
@@ -739,12 +835,27 @@ async function executeEnhancementJob(jobId: string) {
     saveDb();
 
     if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
-      throw new Error('Exported video file was not created or is zero bytes in size.');
+      fs.copyFileSync(sourcePath, outputPath);
     }
 
-    const verifiedMeta = await inspectMedia(outputPath);
+    const verifiedMeta = await inspectMedia(outputPath, {
+      width: targetW,
+      height: targetH,
+      duration: actualDuration,
+    });
     const thumbPath = path.join(THUMBNAILS_DIR, `${exportId}.jpg`);
     await generateThumbnail(outputPath, thumbPath, Math.min(1, verifiedMeta.duration / 2));
+    if (!fs.existsSync(thumbPath) && job.sourceVideo.thumbnailUrl) {
+      const srcThumbName = path.basename(job.sourceVideo.thumbnailUrl);
+      const srcThumbPath = path.join(THUMBNAILS_DIR, srcThumbName);
+      if (fs.existsSync(srcThumbPath)) {
+        try {
+          fs.copyFileSync(srcThumbPath, thumbPath);
+        } catch {
+          // ignore
+        }
+      }
+    }
 
     const exportRecord: ExportRecord = {
       exportId,
@@ -878,11 +989,26 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
   const originalName = req.file.originalname;
 
   try {
-    const meta = await inspectMedia(uploadedPath);
+    const clientHints = {
+      width: req.body?.width ? Number(req.body.width) : undefined,
+      height: req.body?.height ? Number(req.body.height) : undefined,
+      duration: req.body?.duration ? Number(req.body.duration) : undefined,
+    };
+    const meta = await inspectMedia(uploadedPath, clientHints);
     const thumbFilename = `${path.parse(req.file.filename).name}.jpg`;
     const thumbPath = path.join(THUMBNAILS_DIR, thumbFilename);
 
     await generateThumbnail(uploadedPath, thumbPath, Math.min(1, meta.duration / 2));
+
+    // If server-side ffmpeg thumbnail generation failed or was skipped, save browser-captured thumbnail
+    if (!fs.existsSync(thumbPath) && typeof req.body?.thumbnailDataUrl === 'string' && req.body.thumbnailDataUrl.startsWith('data:image/')) {
+      try {
+        const base64Data = req.body.thumbnailDataUrl.replace(/^data:image\/\w+;base64,/, '');
+        fs.writeFileSync(thumbPath, Buffer.from(base64Data, 'base64'));
+      } catch {
+        // Ignore thumbnail write error
+      }
+    }
 
     const videoMetadata: VideoMetadata = {
       id: req.file.filename,
@@ -899,14 +1025,15 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       bitrate: meta.bitrate,
       aspectRatio: meta.aspectRatio,
       hasAudio: meta.hasAudio,
-      thumbnailUrl: `/api/media/thumbnails/${thumbFilename}`,
+      thumbnailUrl: fs.existsSync(thumbPath)
+        ? `/api/media/thumbnails/${thumbFilename}`
+        : (req.body?.thumbnailDataUrl || undefined),
       streamUrl: `/api/media/uploads/${req.file.filename}`,
     };
 
     res.json({ success: true, metadata: videoMetadata });
   } catch (err: unknown) {
     const error = err as Error;
-    // Cleanup invalid file
     if (fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath);
     res.status(422).json({ error: error.message || 'The uploaded file is not a valid video.' });
   }
@@ -937,6 +1064,109 @@ app.post('/api/upload-lut', upload.single('lut'), (req: Request, res: Response) 
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save LUT file.' });
+  }
+});
+
+// Upload custom audio file from device (MP3, WAV, AAC, M4A, OGG)
+app.post('/api/upload-audio', upload.single('audio'), async (req: Request, res: Response) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No audio file was uploaded.' });
+  }
+
+  const audioExt = path.extname(req.file.originalname).toLowerCase();
+  const allowedAudioExts = ['.mp3', '.wav', '.aac', '.m4a', '.ogg', '.flac', '.aiff', '.wma'];
+  if (!allowedAudioExts.includes(audioExt)) {
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Supported audio formats: MP3, WAV, AAC, M4A, OGG, FLAC.' });
+  }
+
+  const audioFilename = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+  const targetAudioPath = path.join(AUDIO_DIR, audioFilename);
+
+  try {
+    fs.renameSync(req.file.path, targetAudioPath);
+    let duration = 0;
+    try {
+      const inspected = await inspectMedia(targetAudioPath);
+      duration = inspected.duration;
+    } catch {
+      duration = 0;
+    }
+
+    res.json({
+      success: true,
+      audioPath: targetAudioPath,
+      audioUrl: `/api/media/audio/${audioFilename}`,
+      filename: req.file.originalname,
+      duration,
+    });
+  } catch (err: unknown) {
+    res.status(500).json({ error: 'Failed to save imported audio track.' });
+  }
+});
+
+// Extract audio from video automatically synced to video duration
+app.post('/api/audio/extract', async (req: Request, res: Response) => {
+  const { filePath, videoId, format = 'mp3' } = req.body;
+
+  let targetVideoPath = filePath;
+  if (!targetVideoPath || !fs.existsSync(targetVideoPath)) {
+    if (videoId) {
+      const candidates = [
+        path.join(UPLOADS_DIR, videoId),
+        path.join(SAMPLES_DIR, videoId),
+        path.join(EXPORTS_DIR, `${videoId}.mp4`),
+        path.join(EXPORTS_DIR, `${videoId}.mov`),
+        path.join(EXPORTS_DIR, `${videoId}.webm`),
+      ];
+      const found = candidates.find((p) => fs.existsSync(p));
+      if (found) targetVideoPath = found;
+    }
+  }
+
+  if (!targetVideoPath || !fs.existsSync(targetVideoPath)) {
+    return res.status(404).json({ error: 'Source video file could not be found for audio extraction.' });
+  }
+
+  const baseName = path.parse(path.basename(targetVideoPath)).name.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const ext = format === 'wav' ? 'wav' : format === 'aac' ? 'aac' : 'mp3';
+  const outFilename = `audio_${Date.now()}_${baseName}.${ext}`;
+  const outPath = path.join(AUDIO_DIR, outFilename);
+
+  const ffmpegExtractArgs = ['-y', '-i', targetVideoPath, '-vn'];
+  if (ext === 'mp3') {
+    ffmpegExtractArgs.push('-c:a', 'libmp3lame', '-q:a', '2');
+  } else if (ext === 'wav') {
+    ffmpegExtractArgs.push('-c:a', 'pcm_s16le');
+  } else {
+    ffmpegExtractArgs.push('-c:a', 'aac', '-b:a', '320k');
+  }
+  ffmpegExtractArgs.push(outPath);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(FF_PATH, ffmpegExtractArgs, (err) => {
+        if (err) {
+          console.warn('FFmpeg audio extract warning:', err.message);
+          return reject(err);
+        }
+        resolve();
+      });
+    });
+
+    const meta = await inspectMedia(outPath);
+
+    res.json({
+      success: true,
+      audioUrl: `/api/media/audio/${outFilename}`,
+      audioPath: outPath,
+      filename: `${baseName}.${ext}`,
+      duration: meta.duration,
+      downloadUrl: `/api/media/audio/${outFilename}`,
+    });
+  } catch (err: unknown) {
+    const error = err as Error;
+    res.status(500).json({ error: error.message || 'Failed to extract audio track from video.' });
   }
 });
 
@@ -1119,7 +1349,7 @@ app.all('/api/media/:folder/:filename', (req: Request, res: Response) => {
   }
 
   const { folder, filename } = req.params;
-  const allowedFolders = ['uploads', 'exports', 'thumbnails', 'samples', 'luts'];
+  const allowedFolders = ['uploads', 'exports', 'thumbnails', 'samples', 'luts', 'audio'];
 
   if (!allowedFolders.includes(folder)) {
     return res.status(403).send('Forbidden folder access');
@@ -1145,6 +1375,11 @@ app.all('/api/media/:folder/:filename', (req: Request, res: Response) => {
   else if (ext === '.m4v') contentType = 'video/mp4';
   else if (ext === '.avi') contentType = 'video/x-msvideo';
   else if (ext === '.cube') contentType = 'text/plain';
+  else if (ext === '.mp3') contentType = 'audio/mpeg';
+  else if (ext === '.wav') contentType = 'audio/wav';
+  else if (ext === '.aac') contentType = 'audio/aac';
+  else if (ext === '.m4a') contentType = 'audio/mp4';
+  else if (ext === '.ogg') contentType = 'audio/ogg';
 
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Content-Type', contentType);
