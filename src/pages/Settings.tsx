@@ -3,6 +3,7 @@ import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, PASTEL_THEMES, PastelPalette } from '../context/ThemeContext';
+import { useDesktopMode } from '../context/DesktopModeContext';
 import { useDeviceCapabilities } from '../lib/deviceCapabilities';
 import { useToast } from '../components/Toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,6 +28,7 @@ import { sendCompleteNotification, requestNotificationPermission } from '../lib/
 export const Settings: React.FC = () => {
   const { user, signInWithGoogle, signOutUser } = useAuth();
   const { theme, palette, setColorMode, setPalette } = useTheme();
+  const { isDesktopMode } = useDesktopMode();
   const { showToast } = useToast();
   const deviceCaps = useDeviceCapabilities();
 
@@ -42,6 +44,12 @@ export const Settings: React.FC = () => {
   });
   const [prefSaved, setPrefSaved] = useState(false);
 
+  // Custom Gemini API Key state
+  const [customApiKey, setCustomApiKey] = useState(() => {
+    return localStorage.getItem('elitematrix_custom_gemini_api_key') || '';
+  });
+  const [apiKeySaved, setApiKeySaved] = useState(false);
+
   // Policy modals
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
@@ -55,11 +63,18 @@ export const Settings: React.FC = () => {
     setTimeout(() => setPrefSaved(false), 2000);
   };
 
+  const handleSaveApiKey = () => {
+    localStorage.setItem('elitematrix_custom_gemini_api_key', customApiKey.trim());
+    setApiKeySaved(true);
+    showToast('Custom Gemini API key saved', 'success');
+    setTimeout(() => setApiKeySaved(false), 2000);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg-primary,#171717)] text-[var(--text-primary,#F5F4F0)] flex flex-col pb-24">
       <TopBar title="Settings" />
 
-      <main className="flex-1 w-full max-w-lg mx-auto px-4 py-4 space-y-5">
+      <main className={`flex-1 w-full mx-auto px-4 py-4 space-y-5 ${isDesktopMode ? 'max-w-4xl' : 'max-w-lg'}`}>
         {/* Apple-Style Pastel Themes & Appearance Section */}
         <section className="bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#2f2f2f)] rounded-2xl p-4 space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
@@ -304,6 +319,43 @@ export const Settings: React.FC = () => {
           </div>
         </section>
 
+        {/* Custom Gemini API Key */}
+        <section className="bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#2f2f2f)] rounded-2xl p-4 space-y-3.5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+              <h2 className="text-sm font-semibold text-[var(--text-primary,#F5F4F0)]">Custom Gemini API Key</h2>
+            </div>
+            {apiKeySaved && (
+              <span className="text-xs text-[var(--accent,#C7F464)] flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> Saved
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-[var(--text-muted,#888888)] leading-relaxed">
+            If public AI video enhancement quota is reached, enter your personal Google Gemini API key here for unlimited real-time neural upscaling and color calibration.
+          </p>
+
+          <div className="space-y-2.5 pt-1">
+            <input
+              type="password"
+              placeholder="AIzaSy..."
+              value={customApiKey}
+              onChange={(e) => setCustomApiKey(e.target.value)}
+              className="w-full bg-[var(--bg-primary,#171717)] border border-[var(--border-subtle,#2f2f2f)] rounded-xl px-3 py-2.5 text-xs text-[var(--text-primary,#F5F4F0)] placeholder:text-[var(--text-muted,#666666)] focus:outline-none focus:border-[var(--accent,#C7F464)] font-mono"
+            />
+
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={handleSaveApiKey}
+              className="w-full h-10 rounded-xl bg-[var(--bg-surface-elevated,#2a2a2a)] hover:bg-[var(--border-strong,#333333)] border border-[var(--border-strong,#3f3f3f)] text-xs font-semibold text-[var(--accent,#C7F464)] transition-colors cursor-pointer"
+            >
+              Save Custom API Key
+            </motion.button>
+          </div>
+        </section>
+
         {/* Account Section */}
         <section className="bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#2f2f2f)] rounded-2xl p-4 space-y-4 shadow-sm">
           <div className="flex items-center gap-2">
@@ -445,6 +497,15 @@ export const Settings: React.FC = () => {
             </div>
           )}
         </AnimatePresence>
+        {/* Developer Credit */}
+        <div className="pt-2 pb-4 text-center">
+          <p className="text-xs text-[var(--text-muted,#888888)] flex items-center justify-center gap-1.5 font-medium">
+            <span>Made with</span>
+            <span className="text-red-500">❤️</span>
+            <span>by</span>
+            <span className="font-semibold text-[var(--accent,#C7F464)]">Rahul Shah</span>
+          </p>
+        </div>
       </main>
 
       <BottomNav />

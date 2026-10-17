@@ -8,6 +8,7 @@ import { VideoTimelineTrimmer } from '../components/VideoTimelineTrimmer';
 import { GalleryPickerModal } from '../components/GalleryPickerModal';
 import { SocialMediaAiOptimizerModal } from '../components/SocialMediaAiOptimizerModal';
 import { useAuth } from '../context/AuthContext';
+import { useDesktopMode } from '../context/DesktopModeContext';
 import { useToast } from '../components/Toast';
 import { VideoMetadata, EnhancementSettings, PresetType, AspectRatioType, LutPresetType } from '../types/video';
 import {
@@ -193,6 +194,7 @@ const PRESET_CONFIGS: Record<PresetType, Partial<EnhancementSettings>> = {
 export const Enhance: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isDesktopMode } = useDesktopMode();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lutInputRef = useRef<HTMLInputElement>(null);
@@ -327,9 +329,14 @@ export const Enhance: React.FC = () => {
     setAnalyzingAi(true);
     setAiNote(null);
     try {
+      const customKey = localStorage.getItem('elitematrix_custom_gemini_api_key');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (customKey) {
+        headers['x-gemini-api-key'] = customKey;
+      }
       const res = await fetch('/api/ai/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ metadata: video }),
       });
       const data = await res.json();
@@ -609,7 +616,7 @@ export const Enhance: React.FC = () => {
     >
       <TopBar title="Studio" showBack />
 
-      <main className="flex-1 w-full max-w-lg mx-auto px-4 py-4 space-y-5">
+      <main className={`flex-1 w-full mx-auto px-4 py-4 space-y-5 ${isDesktopMode ? 'max-w-4xl' : 'max-w-lg'}`}>
         {/* Video Header & Device Hardware Badge */}
         <section className="space-y-3">
           <div className="flex items-center justify-between text-xs px-1">
@@ -1738,7 +1745,7 @@ export const Enhance: React.FC = () => {
       </main>
 
       {/* Floating Bottom Action Bar */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 p-3 bg-[var(--bg-primary,#171717)]/80 backdrop-blur-xl border-t border-[var(--border-subtle,#2b2b2b)] max-w-lg mx-auto">
+      <div className={`fixed bottom-16 left-0 right-0 z-30 p-3 bg-[var(--bg-primary,#171717)]/80 backdrop-blur-xl border-t border-[var(--border-subtle,#2b2b2b)] ${isDesktopMode ? 'max-w-4xl' : 'max-w-lg'} mx-auto`}>
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs font-tabular">
             <span className="text-[10px] text-[var(--text-muted,#888888)] block">Target Output</span>

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
 import { ComparisonSlider } from '../components/ComparisonSlider';
+import { useDesktopMode } from '../context/DesktopModeContext';
 import { ExportRecord, JobRecord } from '../types/video';
 import {
   Download,
@@ -19,6 +20,7 @@ import {
   Ratio,
   Palette,
   Maximize2,
+  Trash2,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,6 +29,7 @@ export const ExportResult: React.FC = () => {
   const { exportId } = useParams<{ exportId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { isDesktopMode } = useDesktopMode();
 
   const [exportData, setExportData] = useState<ExportRecord | null>(null);
   const [jobData, setJobData] = useState<JobRecord | null>(null);
@@ -35,6 +38,20 @@ export const ExportResult: React.FC = () => {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  const handleDeleteExport = async () => {
+    if (!exportData) return;
+    try {
+      await fetch(`/api/exports/${exportData.exportId}`, {
+        method: 'DELETE',
+      });
+      showToast('Project and saved video deleted', 'info');
+      navigate('/projects');
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  };
 
   useEffect(() => {
     if (!exportId) return;
@@ -179,7 +196,7 @@ export const ExportResult: React.FC = () => {
     >
       <TopBar title="Export Complete" showBack />
 
-      <main className="flex-1 w-full max-w-lg mx-auto px-4 py-4 space-y-5">
+      <main className={`flex-1 w-full mx-auto px-4 py-4 space-y-5 ${isDesktopMode ? 'max-w-4xl' : 'max-w-lg'}`}>
         {/* Real Enhanced Video Preview & Interactive Comparison */}
         <section className="space-y-2">
           <div className="flex items-center justify-between text-xs px-1">
@@ -388,6 +405,16 @@ export const ExportResult: React.FC = () => {
             </motion.button>
           </div>
 
+          {/* Delete Project & Saved Video Option */}
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setShowDeleteModal(true)}
+            className="w-full h-11 rounded-xl bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#2f2f2f)] hover:border-red-500 text-xs font-semibold text-red-400 flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete Project & Saved Video</span>
+          </motion.button>
+
           {/* Back to Studio CTA */}
           <button
             onClick={() => navigate('/enhance')}
@@ -397,6 +424,44 @@ export const ExportResult: React.FC = () => {
           </button>
         </section>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-[var(--bg-surface,#222222)] border border-[var(--border-subtle,#2f2f2f)] rounded-2xl p-5 space-y-3"
+            >
+              <h3 className="text-sm font-semibold text-[var(--text-primary,#F5F4F0)]">Delete Project & Video?</h3>
+              <p className="text-xs text-[var(--text-muted,#888888)] leading-relaxed">
+                Are you sure you want to delete this project and its saved master video? This action cannot be undone.
+              </p>
+              <div className="flex items-center gap-2 justify-end pt-2">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-4 py-2 text-xs text-[var(--text-muted,#888888)] hover:text-[var(--text-primary,#F5F4F0)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteExport}
+                  className="px-4 py-2 bg-red-500 text-white font-semibold rounded-xl text-xs hover:bg-red-600 transition-colors cursor-pointer"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <BottomNav />
     </motion.div>

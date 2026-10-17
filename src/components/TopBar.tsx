@@ -2,7 +2,8 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { ArrowLeft, User as UserIcon, Palette } from 'lucide-react';
+import { useDesktopMode } from '../context/DesktopModeContext';
+import { ArrowLeft, User as UserIcon, Monitor, Smartphone } from 'lucide-react';
 
 interface TopBarProps {
   title?: string;
@@ -13,7 +14,7 @@ export const TopBar: React.FC<TopBarProps> = ({ title, showBack = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { activeThemeConfig } = useTheme();
+  const { isDesktopMode, toggleDesktopMode } = useDesktopMode();
 
   const isHome = location.pathname === '/';
 
@@ -47,6 +48,15 @@ export const TopBar: React.FC<TopBarProps> = ({ title, showBack = false }) => {
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          onClick={toggleDesktopMode}
+          aria-label="Toggle Desktop Mode"
+          title={isDesktopMode ? "Switch to Mobile View" : "Switch to Desktop Workstation View"}
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted,#888888)] hover:text-[var(--accent,#C7F464)] hover:bg-[var(--bg-surface,#222222)] transition-colors cursor-pointer"
+        >
+          {isDesktopMode ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+        </button>
+
         <button
           onClick={() => navigate('/settings')}
           aria-label="Settings and Profile"

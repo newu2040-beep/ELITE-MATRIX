@@ -2,9 +2,11 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Home, Sparkles, Film, Settings } from 'lucide-react';
+import { useDesktopMode } from '../context/DesktopModeContext';
 
 export const BottomNav: React.FC = () => {
   const location = useLocation();
+  const { isDesktopMode } = useDesktopMode();
 
   const navItems = [
     { to: '/', label: 'Home', icon: Home },
@@ -15,7 +17,7 @@ export const BottomNav: React.FC = () => {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg-primary,#171717)]/90 backdrop-blur-xl border-t border-[var(--border-subtle,#2a2a2a)] pb-safe transition-colors">
-      <div className="grid grid-cols-4 h-14 max-w-lg mx-auto relative px-2">
+      <div className={`grid grid-cols-4 h-14 mx-auto relative px-2 ${isDesktopMode ? 'max-w-4xl' : 'max-w-lg'}`}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to));

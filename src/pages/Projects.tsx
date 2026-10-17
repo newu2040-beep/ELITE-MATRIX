@@ -4,6 +4,7 @@ import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { useDesktopMode } from '../context/DesktopModeContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProjectRecord } from '../types/video';
 import {
@@ -20,6 +21,7 @@ export const Projects: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { isDesktopMode } = useDesktopMode();
 
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,7 @@ export const Projects: React.FC = () => {
     <div className="min-h-screen bg-[var(--bg-primary,#171717)] text-[var(--text-primary,#F5F4F0)] flex flex-col pb-24">
       <TopBar title="Projects" />
 
-      <main className="flex-1 w-full max-w-lg mx-auto px-4 py-4 space-y-4">
+      <main className={`flex-1 w-full mx-auto px-4 py-4 space-y-4 ${isDesktopMode ? 'max-w-4xl' : 'max-w-lg'}`}>
         {/* Search bar & filter tabs */}
         <div className="space-y-2">
           <div className="relative">
@@ -160,7 +162,7 @@ export const Projects: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className={isDesktopMode ? "grid grid-cols-1 md:grid-cols-2 gap-3" : "space-y-3"}>
             {filteredProjects.map((proj) => {
               const hasExport = !!proj.latestExport;
               const isProcessing = proj.latestJob && ['queued', 'processing', 'finalizing'].includes(proj.latestJob.status);
