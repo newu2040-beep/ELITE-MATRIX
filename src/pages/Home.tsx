@@ -40,10 +40,21 @@ export const Home: React.FC = () => {
 
     const fetchData = async () => {
       try {
+        const fetchWithRetry = async (url: string, retries = 2): Promise<Response> => {
+          try {
+            const res = await fetch(url, { headers: { 'Cache-Control': 'no-cache' } });
+            if (!res.ok && retries > 0) throw new Error('Retry');
+            return res;
+          } catch (err) {
+            if (retries > 0) return fetchWithRetry(url, retries - 1);
+            throw err;
+          }
+        };
+
         const [jobsRes, projRes, samplesRes] = await Promise.all([
-          fetch(`/api/jobs?ownerUid=${user?.uid || ''}`),
-          fetch(`/api/projects?ownerUid=${user?.uid || ''}`),
-          fetch('/api/samples'),
+          fetchWithRetry(`/api/jobs?ownerUid=${user?.uid || ''}`),
+          fetchWithRetry(`/api/projects?ownerUid=${user?.uid || ''}`),
+          fetchWithRetry('/api/samples'),
         ]);
 
         if (isMounted) {

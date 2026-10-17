@@ -677,6 +677,7 @@ async function executeEnhancementJob(jobId: string) {
     saveDb();
 
     const startTime = Date.now();
+    console.log('Executing FFmpeg:', FF_PATH, ffmpegArgs.join(' '));
     const ffProcess = spawn(FF_PATH, ffmpegArgs);
     activeProcesses[jobId] = ffProcess;
 

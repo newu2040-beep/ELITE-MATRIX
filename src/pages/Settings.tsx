@@ -22,7 +22,10 @@ import {
   Monitor,
   Zap,
   Cpu,
+  Smartphone,
+  Download,
 } from 'lucide-react';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 import { sendCompleteNotification, requestNotificationPermission } from '../lib/notifications';
 
 export const Settings: React.FC = () => {
@@ -404,6 +407,15 @@ export const Settings: React.FC = () => {
               <span>Sign Out</span>
             </button>
           </div>
+        </section>
+
+        {/* App Installation */}
+        <section className="bg-[var(--bg-surface,#202020)] border border-[var(--border-subtle,#2f2f2f)] rounded-2xl p-4 space-y-3.5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-[var(--accent,#C7F464)]" />
+            <h2 className="text-sm font-semibold text-[var(--text-primary,#F5F4F0)]">App Installation</h2>
+          </div>
+          <PWAInstallButton />
         </section>
 
         {/* Storage and Privacy Policy */}
